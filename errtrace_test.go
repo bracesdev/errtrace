@@ -11,6 +11,12 @@ import (
 	"braces.dev/errtrace"
 )
 
+func TestWrapNil(t *testing.T) {
+	if err := errtrace.Wrap(nil); err != nil {
+		t.Errorf("Wrap(): want nil, got %v", err)
+	}
+}
+
 func TestWrappedError(t *testing.T) {
 	orig := errors.New("foo")
 	err := errtrace.Wrap(orig)

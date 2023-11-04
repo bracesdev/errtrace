@@ -13,7 +13,14 @@ import (
 	"strings"
 )
 
+// Wrap adds information about the program counter of the caller to the error.
+// This is intended to be used at all return points in a function.
+// If err is nil, Wrap returns nil.
 func Wrap(err error) error {
+	if err == nil {
+		return nil
+	}
+
 	var callers [1]uintptr
 	n := runtime.Callers(2 /*+skip*/, callers[:]) // skip Callers + WrapSkip
 	// TODO: This is currently slower than fmt.Errorf.
