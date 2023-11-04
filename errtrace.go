@@ -31,9 +31,12 @@ func Wrap(err error) error {
 //
 // An error is returned if the writer returns an error.
 func Format(w io.Writer, target error) (err error) {
+	// Same format as tracebacks:
+	//
+	// functionName
+	// 	file:line
 	Frames(target)(func(f Frame) bool {
-		// TODO: strip package name from function
-		_, err = fmt.Fprintf(w, "%s:%d:%s\n", f.File, f.Line, f.Func)
+		_, err = fmt.Fprintf(w, "%s\n\t%s:%d\n", f.Func, f.File, f.Line)
 		return err == nil
 	})
 	return err

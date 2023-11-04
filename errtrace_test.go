@@ -79,15 +79,15 @@ func TestFormatTrace(t *testing.T) {
 		return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 	}
 
-	if fName := ":" + funcName(f); !strings.Contains(trace, fName) {
+	if fName := funcName(f) + "\n"; !strings.Contains(trace, fName) {
 		t.Errorf("FormatString(): want trace to contain %q, got:\n%s", fName, trace)
 	}
 
-	if gName := ":" + funcName(g); !strings.Contains(trace, gName) {
+	if gName := funcName(g) + "\n"; !strings.Contains(trace, gName) {
 		t.Errorf("FormatString(): want trace to contain %q, got:\n%s", gName, trace)
 	}
 
-	hName := ":" + funcName(h)
+	hName := funcName(h) + "\n"
 	if want, got := 4, strings.Count(trace, hName); want != got {
 		t.Errorf("FormatString(): want trace to contain %d instances of %q, got %d\n%s", want, hName, got, trace)
 	}
