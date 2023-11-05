@@ -1,3 +1,3 @@
 module braces.dev/errtrace
 
-go 1.21.3
+go 1.21
