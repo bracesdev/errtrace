@@ -65,19 +65,26 @@ func Frames(target error) func(yield func(Frame) bool) bool {
 	return func(yield func(Frame) bool) bool {
 		var tr *errTrace
 		for ; errors.As(target, &tr); target = tr.err {
-			fn := runtime.FuncForPC(tr.pc)
-			if fn == nil {
-				continue
-			}
+			frames := runtime.CallersFrames([]uintptr{tr.pc})
 
-			file, line := fn.FileLine(tr.pc)
-			frame := Frame{
-				File: file,
-				Line: line,
-				Func: fn.Name(),
-			}
-			if !yield(frame) {
-				return false
+			for {
+				f, more := frames.Next()
+				if f == (runtime.Frame{}) {
+					break
+				}
+
+				frame := Frame{
+					File: f.File,
+					Line: f.Line,
+					Func: f.Function,
+				}
+				if !yield(frame) {
+					return false
+				}
+
+				if !more {
+					break
+				}
 			}
 		}
 		return true

@@ -31,17 +31,15 @@ func TestWrap_Line(t *testing.T) {
 		{
 			name: "Wrap to intermediate and return",
 			f: func() (retErr error) {
-				// TODO: Expect the Wrap to be the trace line.
-				wrapped := errtrace.Wrap(failed)
-				return wrapped // trace line
+				wrapped := errtrace.Wrap(failed) // trace line
+				return wrapped
 			},
 		},
 		{
 			name: "Decorate error after Wrap",
 			f: func() (retErr error) {
-				// TODO: Expect the Wrap to be the trace line.
-				wrapped := errtrace.Wrap(failed)
-				return fmt.Errorf("got err: %w", wrapped) // trace line
+				wrapped := errtrace.Wrap(failed) // trace line
+				return fmt.Errorf("got err: %w", wrapped)
 			},
 		},
 		{
