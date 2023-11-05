@@ -11,6 +11,8 @@ import (
 	"io"
 	"runtime"
 	"strings"
+
+	"braces.dev/errtrace/internal/pc"
 )
 
 // Wrap adds information about the program counter of the caller to the error.
@@ -21,16 +23,10 @@ func Wrap(err error) error {
 		return nil
 	}
 
-	var callers [1]uintptr
-	n := runtime.Callers(2 /*+skip*/, callers[:]) // skip Callers + WrapSkip
-	// TODO: This is currently slower than fmt.Errorf.
-	if n == 0 {
-		return err
-	}
-
+	callerPC := pc.GetCaller(0)
 	return &errTrace{
 		err: err,
-		pc:  callers[0],
+		pc:  callerPC,
 	}
 }
 
