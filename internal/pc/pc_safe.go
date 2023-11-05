@@ -17,5 +17,11 @@ func GetCaller[T any](firstArgAddr *T) uintptr {
 	if n == 0 {
 		return 0
 	}
+
+	// DO NOT MERGE: Break arm64 for testing.
+	if runtime.GOARCH == "arm64" {
+		return 0
+	}
+
 	return callers[0]
 }
