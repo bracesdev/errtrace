@@ -4,6 +4,8 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,36 +19,37 @@ var errtraceLineTestFile string
 // Note: The following tests verify the line, and assume that the
 // test names are unique, and that they are the only tests in this file.
 func TestWrap_Line(t *testing.T) {
-	var failed = errors.New("failed")
+	failed := errors.New("failed")
+
 	tests := []struct {
 		name string
 		f    func() error
 	}{
 		{
-			name: "return Wrap",
+			name: "return Wrap", // @group
 			f: func() error {
-				return errtrace.Wrap(failed) // trace line
+				return errtrace.Wrap(failed) // @trace
 			},
 		},
 		{
-			name: "Wrap to intermediate and return",
+			name: "Wrap to intermediate and return", // @group
 			f: func() (retErr error) {
-				wrapped := errtrace.Wrap(failed) // trace line
+				wrapped := errtrace.Wrap(failed) // @trace
 				return wrapped
 			},
 		},
 		{
-			name: "Decorate error after Wrap",
+			name: "Decorate error after Wrap", // @group
 			f: func() (retErr error) {
-				wrapped := errtrace.Wrap(failed) // trace line
+				wrapped := errtrace.Wrap(failed) // @trace
 				return fmt.Errorf("got err: %w", wrapped)
 			},
 		},
 		{
-			name: "defer updates errTrace",
+			name: "defer updates errTrace", // @group
 			f: func() (retErr error) {
 				defer func() {
-					retErr = errtrace.Wrap(retErr) // trace line
+					retErr = errtrace.Wrap(retErr) // @trace
 				}()
 
 				return failed
@@ -54,14 +57,20 @@ func TestWrap_Line(t *testing.T) {
 		},
 	}
 
-	wantLineNumbers := parseTestWants()
+	testMarkers, err := parseMarkers(errtraceLineTestFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("parsed markers: %v", testMarkers)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wantLine, ok := wantLineNumbers[tt.name]
-			if !ok {
-				t.Fatalf("failed to find `// trace line` for test %q", tt.name)
+			markers := testMarkers[tt.name]
+			if want, got := 1, len(markers); want != got {
+				t.Fatalf("expected %v markers, got %v: %v", want, got, markers)
 			}
 
+			wantLine := markers[0]
 			gotErr := tt.f()
 			got := errtrace.FormatString(gotErr)
 			wantFileLine := fmt.Sprintf("errtrace_line_test.go:%v", wantLine)
@@ -72,33 +81,99 @@ func TestWrap_Line(t *testing.T) {
 	}
 }
 
-func parseTestWants() map[string]int {
-	lines := strings.Split(errtraceLineTestFile, "\n")
+// parseMarkers parses the source file and returns a map
+// from marker group name to line numbers in that group.
+//
+// Marker groups are identified by a '@group' comment
+// immediately following a string literal -- ignoring operators.
+// For example:
+//
+//	{
+//		name: "foo", // @group
+//		// Note that the "," is ignored as it's an operator.
+//	}
+//
+// Markers in the group are identified by a '@trace' comment.
+// For example:
+//
+//	{
+//		name: "foo", // @group
+//		f: func() error {
+//			return errtrace.Wrap(failed) // @trace
+//		},
+//	}
+//
+// A group ends when a new group starts or the end of the file is reached.
+func parseMarkers(src string) (map[string][]int, error) {
+	// We don't need to parse the Go AST.
+	// Just lexical analysis is enough.
+	fset := token.NewFileSet()
+	file := fset.AddFile("errtrace_line_test.go", fset.Base(), len(src))
 
-	testWants := make(map[string]int)
-	var lastTestName string
-	for i, line := range lines {
-		if name, ok := strings.CutPrefix(line, "\t\t\tname: "); ok {
-			// trim and unquote name which looks like `"foo",`
-			name = strings.TrimSpace(strings.TrimSuffix(name, ","))
-			unquoted, err := strconv.Unquote(name)
-			if err != nil {
-				fmt.Println(err)
-				panic(fmt.Sprintf("expected test name to be quoted, got %q", name))
-			}
+	var (
+		errs []error
+		scan scanner.Scanner
+	)
+	scan.Init(
+		file,
+		[]byte(src),
+		func(pos token.Position, msg string) {
+			// This function is called for each error encountered
+			// while scanning.
+			errs = append(errs, fmt.Errorf("%v:%v", pos, msg))
+		},
+		scanner.ScanComments,
+	)
 
-			lastTestName = unquoted
-			continue
-		}
-
-		if strings.Contains(line, "// trace line") {
-			testWants[lastTestName] = i + 1 // indexes start 0, lines start at 1.
-		}
-
-		if strings.Contains(line, "parseTestWants") {
-			break
-		}
+	errf := func(pos token.Pos, format string, args ...any) {
+		msg := fmt.Sprintf(format, args...)
+		errs = append(errs, fmt.Errorf("%v:%v", file.Position(pos), msg))
 	}
 
-	return testWants
+	markers := make(map[string][]int)
+	var (
+		currentMarker     string
+		lastStringLiteral string
+	)
+	for {
+		pos, tok, lit := scan.Scan()
+
+		switch tok {
+		case token.EOF:
+			return markers, errors.Join(errs...)
+
+		case token.STRING:
+			s, err := strconv.Unquote(lit)
+			if err != nil {
+				errf(pos, "bad string literal: %v", err)
+				continue
+			}
+			lastStringLiteral = s
+
+		case token.COMMENT:
+			switch lit {
+			case "// @group":
+				if lastStringLiteral == "" {
+					errf(pos, "expected string literal before @group")
+					continue
+				}
+
+				currentMarker = lastStringLiteral
+
+			case "// @trace":
+				if currentMarker == "" {
+					errf(pos, "expected @group before @trace")
+					continue
+				}
+
+				markers[currentMarker] = append(markers[currentMarker], file.Line(pos))
+			}
+
+		default:
+			// For all other non-operator tokens, reset the last string literal.
+			if !tok.IsOperator() {
+				lastStringLiteral = ""
+			}
+		}
+	}
 }
