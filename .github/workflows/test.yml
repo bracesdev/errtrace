@@ -1,0 +1,39 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ['*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.21.x', '1.20.x']
+        arch: ['amd64', '386', 'arm64']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+        cache: true
+    
+    # GH runners use amd64 which also support 386.
+    # For other architectures, use qemu.
+    - name: Install QEMU
+      if: matrix.arch != 'amd64' && matrix.arch != '386'
+      uses: docker/setup-qemu-action@v3
+
+    - name: Test ${{ matrix.arch }}
+      run: make test
+      env:
+        GOARCH: ${{ matrix.arch }}
