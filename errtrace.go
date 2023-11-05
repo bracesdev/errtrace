@@ -18,12 +18,14 @@ import (
 // Wrap adds information about the program counter of the caller to the error.
 // This is intended to be used at all return points in a function.
 // If err is nil, Wrap returns nil.
+//
+//go:noinline since unsafe GetCaller requires a stack and the address of the first arg.
 func Wrap(err error) error {
 	if err == nil {
 		return nil
 	}
 
-	callerPC := pc.GetCaller(0)
+	callerPC := pc.GetCaller(&err)
 	return &errTrace{
 		err: err,
 		pc:  callerPC,
