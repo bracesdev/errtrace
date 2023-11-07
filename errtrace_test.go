@@ -101,14 +101,18 @@ func TestFormatTrace(t *testing.T) {
 
 func BenchmarkWrap(b *testing.B) {
 	err := errors.New("foo")
-	for i := 0; i < b.N; i++ {
-		_ = errtrace.Wrap(err)
-	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = errtrace.Wrap(err)
+		}
+	})
 }
 
 func BenchmarkFmtErrorf(b *testing.B) {
 	err := errors.New("foo")
-	for i := 0; i < b.N; i++ {
-		_ = fmt.Errorf("bar: %w", err)
-	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = fmt.Errorf("bar: %w", err)
+		}
+	})
 }
