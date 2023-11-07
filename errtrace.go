@@ -15,6 +15,8 @@ import (
 	"braces.dev/errtrace/internal/pc"
 )
 
+var _arena = newArena[errTrace](1024)
+
 // Wrap adds information about the program counter of the caller to the error.
 // This is intended to be used at all return points in a function.
 // If err is nil, Wrap returns nil.
@@ -26,10 +28,10 @@ func Wrap(err error) error {
 	}
 
 	callerPC := pc.GetCaller(&err)
-	return &errTrace{
-		err: err,
-		pc:  callerPC,
-	}
+	et := _arena.Take()
+	et.err = err
+	et.pc = callerPC
+	return et
 }
 
 // Format writes the return trace for err to the writer.
