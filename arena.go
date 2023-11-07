@@ -42,9 +42,6 @@ type arenaSlab[T any] struct {
 
 	// Index of the next object to be taken.
 	idx int
-
-	// Ensures that the slab is replaced only once.
-	replace sync.Once
 }
 
 func newArenaSlab[T any](sz int) *arenaSlab[T] {
