@@ -2,7 +2,6 @@ package errtrace
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
 // arena is a lock-free allocator for a fixed-size type.
@@ -42,7 +41,7 @@ type arenaSlab[T any] struct {
 	buf []T
 
 	// Index of the next object to be taken.
-	idx atomic.Int64
+	idx int
 
 	// Ensures that the slab is replaced only once.
 	replace sync.Once
@@ -53,9 +52,10 @@ func newArenaSlab[T any](sz int) *arenaSlab[T] {
 }
 
 func (a *arenaSlab[T]) take() (*T, bool) {
-	idx := a.idx.Add(1) - 1 // 0-indexed
-	if int(idx) >= len(a.buf) {
+	if a.idx >= len(a.buf) {
 		return nil, false
 	}
-	return &a.buf[idx], true
+	ptr := &a.buf[a.idx]
+	a.idx++
+	return ptr, true
 }
