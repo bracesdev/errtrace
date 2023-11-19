@@ -4,8 +4,8 @@ package foo
 
 import (
 	"errors"
-	"fmt"
-); import "braces.dev/errtrace"
+	"fmt"; "braces.dev/errtrace"
+)
 
 func HasFunctionLiteral() {
 	err := func() error {

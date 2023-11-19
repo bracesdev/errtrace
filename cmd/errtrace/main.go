@@ -161,27 +161,55 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 	}
 	ast.Walk(&w, f)
 
+	// If errtrace isn't imported, but at least one insert was made,
+	// we'll need to import errtrace.
+	// Add an import declaration to the file.
 	if !importsErrtrace && len(inserts) > 0 {
-		var lastImportDecl *ast.GenDecl
+		// We want to insert the import after the last existing import.
+		// If the last import is part of a group, we'll make it part of the group.
+		//
+		//	import (
+		//		"foo"
+		//	)
+		//	// becomes
+		//	import (
+		//		"foo"; "brace.dev/errtrace"
+		//	)
+		//
+		// Otherwise, we'll add a new import statement group.
+		//
+		//	import "foo"
+		//	// becomes
+		//	import "foo"; import "brace.dev/errtrace"
+		var (
+			lastImportSpec *ast.ImportSpec
+			lastImportDecl *ast.GenDecl
+		)
 		for _, imp := range f.Decls {
 			decl, ok := imp.(*ast.GenDecl)
 			if !ok || decl.Tok != token.IMPORT {
 				break
 			}
 			lastImportDecl = decl
+			if decl.Lparen.IsValid() && len(decl.Specs) > 0 {
+				// There's an import group.
+				lastImportSpec, _ = decl.Specs[len(decl.Specs)-1].(*ast.ImportSpec)
+			}
 		}
 
 		var i insertImportErrtrace
-		if lastImportDecl != nil {
+		switch {
+		case lastImportSpec != nil:
+			// import ("foo")
+			i.Node = lastImportSpec
+		case lastImportDecl != nil:
 			// import "foo"
-			// // becomes
-			// import "foo"; import "brace.dev/errtrace"
 			i.Node = lastImportDecl
-		} else {
+			i.AddKeyword = true
+		default:
 			// package foo
-			// // becomes
-			// package foo; import "brace.dev/errtrace"
 			i.Node = f.Name
+			i.AddKeyword = true
 		}
 		inserts = append(inserts, &i)
 	}
@@ -212,11 +240,16 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 		switch it := it.(type) {
 		case *insertImportErrtrace:
 			// Add the original node as-is.
+			_, _ = io.WriteString(out, "; ")
+			if it.AddKeyword {
+				_, _ = io.WriteString(out, "import ")
+			}
+
 			if errtracePkg == "errtrace" {
 				// Don't use named imports if we're using the default name.
-				fmt.Fprintf(out, "; import %q", "braces.dev/errtrace")
+				fmt.Fprintf(out, "%q", "braces.dev/errtrace")
 			} else {
-				fmt.Fprintf(out, "; import %s %q", errtracePkg, "braces.dev/errtrace")
+				fmt.Fprintf(out, "%s %q", errtracePkg, "braces.dev/errtrace")
 			}
 
 		case *insertWrapOpen:
@@ -411,7 +444,8 @@ type insert interface {
 // insertImportErrtrace adds an import declaration to the file
 // right after the given node.
 type insertImportErrtrace struct {
-	Node ast.Node // the node to insert the import after
+	AddKeyword bool     // whether the "import" keyword should be added
+	Node       ast.Node // the node to insert the import after
 }
 
 func (e *insertImportErrtrace) Pos() token.Pos {
