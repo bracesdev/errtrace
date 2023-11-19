@@ -25,6 +25,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 )
 
 func main() {
@@ -122,6 +123,32 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 				errtracePkg = imp.Name.Name
 			}
 			break
+		}
+	}
+
+	if !importsErrtrace {
+		// If the file doesn't import errtrace already,
+		// do a quick check to find an unused identifier name.
+		idents := make(map[string]struct{})
+		ast.Inspect(f, func(n ast.Node) bool {
+			if ident, ok := n.(*ast.Ident); ok {
+				idents[ident.Name] = struct{}{}
+			}
+			return true
+		})
+
+		// Pick a name that isn't already used.
+		// Prefer "errtrace" if it's available.
+		for i := 1; ; i++ {
+			candidate := errtracePkg
+			if i > 1 {
+				candidate += strconv.Itoa(i)
+			}
+
+			if _, ok := idents[candidate]; !ok {
+				errtracePkg = candidate
+				break
+			}
 		}
 	}
 
@@ -314,7 +341,6 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 		}
 	}
 
-	// TODO: handle "errtrace" symbol name collision.
 	return t
 }
 
