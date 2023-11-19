@@ -2,11 +2,7 @@
 
 package foo
 
-import (
-	"errors"
-	"fmt"
-	"strconv"
-)
+import "strconv"
 
 func Int(s string) (int, error) {
 	i, err := strconv.Atoi(s)
@@ -15,26 +11,6 @@ func Int(s string) (int, error) {
 	}
 
 	return i + 42, nil
-}
-
-func NamedReturn_Naked(s string) (err error) {
-	err = errors.New("sadness: " + s)
-	fmt.Println("Reporting sadness")
-	return
-}
-
-func HasFunctionLiteral() {
-	err := func() error {
-		return errors.New("sadness")
-	}()
-
-	fmt.Println(err)
-}
-
-func ImmediatelyInvokedFunctionExpression() error {
-	return func() error {
-		return errors.New("sadness")
-	}()
 }
 
 // TODO: multiple return values without variables

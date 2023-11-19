@@ -1,0 +1,22 @@
+//go:build ignore
+
+package foo
+
+import (
+	"errors"
+	"fmt"
+); import "braces.dev/errtrace"
+
+func HasFunctionLiteral() {
+	err := func() error {
+		return errtrace.Wrap(errors.New("sadness"))
+	}()
+
+	fmt.Println(err)
+}
+
+func ImmediatelyInvokedFunctionExpression() error {
+	return errtrace.Wrap(func() error {
+		return errtrace.Wrap(errors.New("sadness"))
+	}())
+}

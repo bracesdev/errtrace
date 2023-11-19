@@ -1,0 +1,36 @@
+//go:build ignore
+
+package foo
+
+import (
+	"errors"
+	"fmt"
+); import "braces.dev/errtrace"
+
+func NakedReturn(s string) (err error) {
+	err = errors.New("sadness: " + s)
+	fmt.Println("Reporting sadness")
+	err = errtrace.Wrap(err); return
+}
+
+func NamedReturn(s string) (err error) {
+	err = errors.New("sadness: " + s)
+	fmt.Println("Reporting sadness")
+	return errtrace.Wrap(err)
+}
+
+func MultipleErrors() (err1, err2 error, ok bool, err3, err4 error) {
+	err1 = errors.New("a")
+	err2 = errors.New("b")
+	ok = false
+	err3 = errors.New("c")
+	err4 = errors.New("d")
+
+	if !ok {
+		// Naked
+		err1, err2, err3, err4 = errtrace.Wrap(err1), errtrace.Wrap(err2), errtrace.Wrap(err3), errtrace.Wrap(err4); return
+	}
+
+	// Named
+	return errtrace.Wrap(err1), errtrace.Wrap(err2), ok, errtrace.Wrap(err3), errtrace.Wrap(err4)
+}
