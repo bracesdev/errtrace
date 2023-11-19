@@ -1,0 +1,72 @@
+//go:build ignore
+
+package foo
+
+import (
+	"errors"
+	"fmt"; "braces.dev/errtrace"
+)
+
+func NoError() (x int) {
+	return 0
+}
+
+func NoErrorNaked() (x int) {
+	return
+}
+
+func NakedReturn(s string) (err error) {
+	err = errors.New("sadness: " + s)
+	fmt.Println("Reporting sadness")
+	err = errtrace.Wrap(err); return
+}
+
+func NamedReturn(s string) (err error) {
+	err = errors.New("sadness: " + s)
+	fmt.Println("Reporting sadness")
+	return errtrace.Wrap(err)
+}
+
+func MultipleErrors() (err1, err2 error, ok bool, err3, err4 error) {
+	err1 = errors.New("a")
+	err2 = errors.New("b")
+	ok = false
+	err3 = errors.New("c")
+	err4 = errors.New("d")
+
+	if !ok {
+		// Naked
+		err1, err2, err3, err4 = errtrace.Wrap(err1), errtrace.Wrap(err2), errtrace.Wrap(err3), errtrace.Wrap(err4); return
+	}
+
+	// Named
+	return errtrace.Wrap(err1), errtrace.Wrap(err2), ok, errtrace.Wrap(err3), errtrace.Wrap(err4)
+}
+
+func UnderscoreNamed() (_ error) {
+	return errtrace.Wrap(NamedReturn("foo"))
+}
+
+func UnderscoreNamedMultiple() (_ bool, err error) {
+	return false, errtrace.Wrap(NamedReturn("foo"))
+}
+
+func DeferWrapNamed() (err error) {
+	defer func() {
+		err = errtrace.Wrap(fmt.Errorf("wrapped: %w", err))
+	}()
+
+	return errtrace.Wrap(NamedReturn("foo"))
+}
+
+func DeferWrapNamedWithItsOwnError() (_ int, err error) {
+	// Both, the error returned by the deferred function
+	// and the named error wrapped by it should be wrapped.
+	defer func() error {
+		err = errtrace.Wrap(fmt.Errorf("wrapped: %w", err))
+
+		return errtrace.Wrap(errors.New("ignored"))
+	}()
+
+	return 0, errtrace.Wrap(UnderscoreNamed())
+}
