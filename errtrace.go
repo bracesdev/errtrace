@@ -11,23 +11,11 @@ import (
 	"io"
 	"runtime"
 	"strings"
-
-	"braces.dev/errtrace/internal/pc"
 )
 
 var _arena = newArena[errTrace](1024)
 
-// Wrap adds information about the program counter of the caller to the error.
-// This is intended to be used at all return points in a function.
-// If err is nil, Wrap returns nil.
-//
-//go:noinline since unsafe GetCaller requires a stack and the address of the first arg.
-func Wrap(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	callerPC := pc.GetCaller()
+func wrap(err error, callerPC uintptr) error {
 	et := _arena.Take()
 	et.err = err
 	et.pc = callerPC
