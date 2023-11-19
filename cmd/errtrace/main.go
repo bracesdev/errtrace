@@ -26,6 +26,7 @@ import (
 	"log"
 	"os"
 	"slices"
+	"strings"
 )
 
 func main() {
@@ -169,7 +170,18 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 		return cmp.Compare(l.Start(), r.Start())
 	})
 
-	// TODO: detect and disallow overlapping edits
+	// Detect overlapping edits.
+	// This indicates a bug in the walker.
+	for i := 1; i < len(edits); i++ {
+		prev, cur := edits[i-1], edits[i]
+		if prev.End() > cur.Start() {
+			var msg strings.Builder
+			fmt.Fprintf(&msg, "%s:found overlapping edit:\n", filename)
+			fmt.Fprintf(&msg, "\t%s:%v\n", fset.Position(prev.End()), prev)
+			fmt.Fprintf(&msg, "\t%s:%v\n", fset.Position(cur.Start()), cur)
+			panic(msg.String())
+		}
+	}
 
 	outw := cmd.Stdout
 	if write {
@@ -390,6 +402,7 @@ func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
 type edit interface {
 	Start() token.Pos
 	End() token.Pos
+	String() string
 }
 
 // appendImportEdit adds an import declaration to the file
@@ -404,6 +417,10 @@ func (e *appendImportEdit) Start() token.Pos {
 
 func (e *appendImportEdit) End() token.Pos {
 	return e.Node.End()
+}
+
+func (e *appendImportEdit) String() string {
+	return fmt.Sprintf("append errtrace import after %T", e.Node)
 }
 
 // wrapEdit adds a errtrace.Wrap call around an expression.
@@ -422,6 +439,10 @@ func (e *wrapEdit) Start() token.Pos {
 
 func (e *wrapEdit) End() token.Pos {
 	return e.Expr.End()
+}
+
+func (e *wrapEdit) String() string {
+	return fmt.Sprintf("wrap %T", e.Expr)
 }
 
 // assignWrapEdit wraps a variable in-place with an errtrace.Wrap call.
@@ -451,6 +472,10 @@ func (e *assignWrapEdit) Start() token.Pos {
 
 func (e *assignWrapEdit) End() token.Pos {
 	return e.Stmt.End()
+}
+
+func (e *assignWrapEdit) String() string {
+	return fmt.Sprintf("assign errors before %v", e.Names)
 }
 
 func isIdent(expr ast.Expr, name string) bool {
