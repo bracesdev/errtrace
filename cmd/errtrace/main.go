@@ -201,14 +201,14 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 		switch {
 		case lastImportSpec != nil:
 			// import ("foo")
-			i.Node = lastImportSpec
+			i.At = lastImportSpec.End()
 		case lastImportDecl != nil:
 			// import "foo"
-			i.Node = lastImportDecl
+			i.At = lastImportDecl.End()
 			i.AddKeyword = true
 		default:
 			// package foo
-			i.Node = f.Name
+			i.At = f.Name.End()
 			i.AddKeyword = true
 		}
 		inserts = append(inserts, &i)
@@ -331,8 +331,8 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 		// Add assignments to the named return values.
 		if n.Results == nil {
 			*t.inserts = append(*t.inserts, &insertWrapAssign{
-				Names: t.errorNames,
-				Stmt:  n,
+				Names:  t.errorNames,
+				Before: n.Pos(),
 			})
 
 			return nil
@@ -368,8 +368,8 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 			}
 
 			*t.inserts = append(*t.inserts,
-				&insertWrapOpen{Expr: expr},
-				&insertWrapClose{Expr: expr},
+				&insertWrapOpen{Before: expr.Pos()},
+				&insertWrapClose{After: expr.End()},
 			)
 		}
 	}
@@ -455,16 +455,20 @@ type insert interface {
 // insertImportErrtrace adds an import declaration to the file
 // right after the given node.
 type insertImportErrtrace struct {
-	AddKeyword bool     // whether the "import" keyword should be added
-	Node       ast.Node // the node to insert the import after
+	AddKeyword bool      // whether the "import" keyword should be added
+	At         token.Pos // position to insert at
 }
 
 func (e *insertImportErrtrace) Pos() token.Pos {
-	return e.Node.End()
+	return e.At
 }
 
 func (e *insertImportErrtrace) String() string {
-	return fmt.Sprintf("append errtrace import after %T", e.Node)
+	if e.AddKeyword {
+		return "add import statement"
+	} else {
+		return "add import"
+	}
 }
 
 // insertWrapOpen adds a errtrace.Wrap call before an expression.
@@ -473,15 +477,15 @@ func (e *insertImportErrtrace) String() string {
 //
 // This needs a corresponding insertWrapClose to close the call.
 type insertWrapOpen struct {
-	Expr ast.Expr
+	Before token.Pos // position to insert before
 }
 
 func (e *insertWrapOpen) Pos() token.Pos {
-	return e.Expr.Pos()
+	return e.Before
 }
 
 func (e *insertWrapOpen) String() string {
-	return fmt.Sprintf("wrap open %T", e.Expr)
+	return "<errtrace.Wrap>"
 }
 
 // insertWrapClose closes a errtrace.Wrap call.
@@ -490,15 +494,15 @@ func (e *insertWrapOpen) String() string {
 //
 // This needs a corresponding insertWrapOpen to open the call.
 type insertWrapClose struct {
-	Expr ast.Expr
+	After token.Pos // position to insert after
 }
 
 func (e *insertWrapClose) Pos() token.Pos {
-	return e.Expr.End()
+	return e.After
 }
 
 func (e *insertWrapClose) String() string {
-	return fmt.Sprintf("wrap close %T", e.Expr)
+	return "</errtrace.Wrap>"
 }
 
 // insertWrapAssign wraps a variable in-place with an errtrace.Wrap call.
@@ -518,12 +522,12 @@ func (e *insertWrapClose) String() string {
 //		err = errtrace.Wrap(err); return
 //	}
 type insertWrapAssign struct {
-	Names []string        // names of variables to wrap
-	Stmt  *ast.ReturnStmt // Stmt.Results == nil
+	Names  []string  // names of variables to wrap
+	Before token.Pos // position to insert before
 }
 
 func (e *insertWrapAssign) Pos() token.Pos {
-	return e.Stmt.Pos()
+	return e.Before
 }
 
 func (e *insertWrapAssign) String() string {
