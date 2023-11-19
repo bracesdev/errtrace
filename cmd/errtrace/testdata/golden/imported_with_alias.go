@@ -1,0 +1,32 @@
+//go:build ignore
+
+package foo
+
+import (
+	"strconv"
+
+	errtrace2 "braces.dev/errtrace"
+)
+
+var _ = errtrace2.Wrap // keep import
+
+func Unwrapped(s string) (int, error) {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, err
+	}
+	return i + 42, nil
+}
+
+func AlreadyWrapped(s string) (int, error) {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, errtrace2.Wrap(err)
+	}
+	return i + 42, nil
+}
+
+func NakedNamedReturn(s string) (i int, err error) {
+	i, err = strconv.Atoi(s)
+	return
+}
