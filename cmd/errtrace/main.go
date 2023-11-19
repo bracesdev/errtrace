@@ -300,10 +300,20 @@ type walker struct {
 
 	// State
 
+	// Function information:
+
 	numReturns   int                      // number of return values
+	errorIdents  []*ast.Ident             // identifiers for error return values (only if unnamed returns)
 	errorObjs    map[*ast.Object]struct{} // objects for error return values (only if named returns)
-	errorNames   []string                 // names of error return values (only if named returns)
 	errorIndices []int                    // indices of error return values
+
+	// Block information:
+
+	// Errors that are wrapped in this block.
+	alreadyWrapped map[*ast.Object]struct{}
+	// The logic to detect re-wraps is pretty simplistic
+	// since it doesn't do any control flow analysis.
+	// If this becomes a necessity, we can add it later.
 }
 
 var _ ast.Visitor = (*walker)(nil)
@@ -318,11 +328,18 @@ func (t *walker) Visit(n ast.Node) ast.Visitor {
 	case *ast.FuncDecl:
 		return t.funcType(n, n.Type)
 
+	case *ast.BlockStmt:
+		newT := *t
+		newT.alreadyWrapped = make(map[*ast.Object]struct{})
+		return &newT
+
+	case *ast.AssignStmt:
+		t.assignStmt(n)
+
 	case *ast.DeferStmt:
 		// This is a bit inefficient;
 		// we'll recurse into the DeferStmt's function literal (if any) twice.
 		t.deferStmt(n)
-		return t
 
 	case *ast.FuncLit:
 		return t.funcType(n, n.Type)
@@ -350,7 +367,7 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	//   - named error return
 	var (
 		objs    []*ast.Object // objects of error return values
-		names   []string      // names of error return values
+		idents  []*ast.Ident  // identifiers of named error return values
 		indices []int         // indices of error return values
 		count   int           // total number of return values
 		// Invariants:
@@ -366,7 +383,7 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 			for _, name := range field.Names {
 				if isError {
 					objs = append(objs, name.Obj)
-					names = append(names, name.Name)
+					idents = append(idents, name)
 					indices = append(indices, count)
 				}
 				count++
@@ -399,7 +416,7 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	// Shallow copy with new state.
 	newT := *t
 	newT.errorObjs = setOf(objs)
-	newT.errorNames = names
+	newT.errorIdents = idents
 	newT.errorIndices = indices
 	newT.numReturns = count
 	return &newT
@@ -412,12 +429,23 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 	}
 
 	// Naked return.
-	// Add assignments to the named return values.
+	// We want to add assignments to the named return values.
 	if n.Results == nil {
-		*t.inserts = append(*t.inserts, &insertWrapAssign{
-			Names:  t.errorNames,
-			Before: n.Pos(),
-		})
+		// Ignore errors that have already been wrapped.
+		names := make([]string, 0, len(t.errorIndices))
+		for _, ident := range t.errorIdents {
+			if _, ok := t.alreadyWrapped[ident.Obj]; ok {
+				continue
+			}
+			names = append(names, ident.Name)
+		}
+
+		if len(names) > 0 {
+			*t.inserts = append(*t.inserts, &insertWrapAssign{
+				Names:  names,
+				Before: n.Pos(),
+			})
+		}
 
 		return nil
 	}
@@ -432,33 +460,32 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 		return nil
 	}
 
-wrapLoop:
 	for _, idx := range t.errorIndices {
-		expr := n.Results[idx]
-
-		switch expr := expr.(type) {
-		case *ast.CallExpr:
-			// Ignore if it's already errtrace.Wrap(...).
-			if sel, ok := expr.Fun.(*ast.SelectorExpr); ok {
-				if isIdent(sel.X, t.errtrace) && isIdent(sel.Sel, "Wrap") {
-					continue wrapLoop
-				}
-			}
-
-		case *ast.Ident:
-			// Optimization: ignore if it's "nil".
-			if expr.Name == "nil" {
-				continue wrapLoop
-			}
-		}
-
-		*t.inserts = append(*t.inserts,
-			&insertWrapOpen{Before: expr.Pos()},
-			&insertWrapClose{After: expr.End()},
-		)
+		t.wrapExpr(n.Results[idx])
 	}
 
 	return t
+}
+
+func (t *walker) assignStmt(n *ast.AssignStmt) {
+	// Record assignments to named error return values.
+	// We'll use this to detect re-wraps.
+	for i, lhs := range n.Lhs {
+		ident, ok := lhs.(*ast.Ident)
+		if !ok {
+			continue // not an identifier
+		}
+
+		_, ok = t.errorObjs[ident.Obj]
+		if !ok {
+			continue // not an error assignment
+		}
+
+		if i < len(n.Rhs) && t.isErrtraceWrap(n.Rhs[i]) {
+			// Assigning to a named error return value.
+			t.alreadyWrapped[ident.Obj] = struct{}{}
+		}
+	}
 }
 
 func (t *walker) deferStmt(n *ast.DeferStmt) {
@@ -466,8 +493,8 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 	// *and* this function has named return values,
 	// we'll want to watch for assignments to those return values.
 
-	if len(t.errorNames) == 0 || len(t.errorIndices) == 0 {
-		return // no named returns or errors
+	if len(t.errorIdents) == 0 {
+		return // no named returns
 	}
 
 	funcLit, ok := n.Call.Fun.(*ast.FuncLit)
@@ -493,14 +520,43 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 
 			// Assigning to a named error return value.
 			// Wrap the rhs in-place.
-			*t.inserts = append(*t.inserts,
-				&insertWrapOpen{Before: assign.Rhs[i].Pos()},
-				&insertWrapClose{After: assign.Rhs[i].End()},
-			)
+			t.wrapExpr(assign.Rhs[i])
 		}
 
 		return true
 	})
+}
+
+func (t *walker) wrapExpr(expr ast.Expr) {
+	switch {
+	case t.isErrtraceWrap(expr):
+		return // already wrapped
+
+	case isIdent(expr, "nil"):
+		// Optimization: ignore if it's "nil".
+		return
+	}
+
+	*t.inserts = append(*t.inserts,
+		&insertWrapOpen{Before: expr.Pos()},
+		&insertWrapClose{After: expr.End()},
+	)
+}
+
+// Detects if an expression is in the form errtrace.Wrap(e).
+func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+
+	// Ignore if it's already errtrace.Wrap(...).
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+
+	return isIdent(sel.X, t.errtrace) && isIdent(sel.Sel, "Wrap")
 }
 
 // insert is a request to add something to the source code.

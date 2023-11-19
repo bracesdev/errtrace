@@ -25,29 +25,68 @@ func TestGolden(t *testing.T) {
 }
 
 func testGolden(t *testing.T, file string) {
-	var stdout, stderr bytes.Buffer
-	defer func() {
-		if t.Failed() {
-			t.Logf("stderr:\n%s", stderr.String())
-		}
-	}()
-
-	exitCode := (&mainCmd{
-		Stderr: &stderr,
-		Stdout: &stdout,
-	}).Run([]string{file})
-	if want := 0; exitCode != want {
-		t.Errorf("exit code = %d, want %d", exitCode, want)
+	giveSrc, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	want, err := os.ReadFile(file + ".golden")
+	wantSrc, err := os.ReadFile(file + ".golden")
 	if err != nil {
 		t.Fatal("Bad test: missing .golden file:", err)
 	}
 
-	if want, got := string(want), stdout.String(); got != want {
+	// Copy into a temporary directory so that we can run with -w.
+	srcPath := filepath.Join(t.TempDir(), "src.go")
+	if err := os.WriteFile(srcPath, []byte(giveSrc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	defer func() {
+		if t.Failed() {
+			t.Logf("output:\n%s", output.String())
+		}
+	}()
+
+	exitCode := (&mainCmd{
+		Stderr: &output,
+		Stdout: &output,
+	}).Run([]string{"-w", srcPath})
+
+	if want := 0; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	gotSrc, err := os.ReadFile(srcPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want, got := string(wantSrc), string(gotSrc); got != want {
 		t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff(want, got)))
 	}
+
+	// Re-run on the output of the first run.
+	// This should be a no-op.
+	t.Run("idempotent", func(t *testing.T) {
+		exitCode := (&mainCmd{
+			Stderr: &output,
+			Stdout: &output,
+		}).Run([]string{"-w", srcPath})
+
+		if want := 0; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+
+		gotSrc, err := os.ReadFile(srcPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if want, got := string(wantSrc), string(gotSrc); got != want {
+			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff(want, got)))
+		}
+	})
 }
 
 func indent(s string) string {
