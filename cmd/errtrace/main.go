@@ -15,7 +15,6 @@ package main
 
 import (
 	"bufio"
-	"cmp"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,7 +24,7 @@ import (
 	"io"
 	"log"
 	"os"
-	"slices"
+	"sort"
 	"strings"
 )
 
@@ -166,8 +165,8 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 		edits = append(edits, &edit)
 	}
 
-	slices.SortFunc(edits, func(l, r edit) int {
-		return cmp.Compare(l.Start(), r.Start())
+	sort.Slice(edits, func(i, j int) bool {
+		return edits[i].Start() < edits[j].Start()
 	})
 
 	// Detect overlapping edits.
