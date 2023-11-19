@@ -262,8 +262,8 @@ type walker struct {
 	// State
 
 	numReturns   int      // number of return values
-	returnNames  []string // names of return values, if any
-	returnErrors []int    // indices of error return values
+	errorNames   []string // names of error return values (only if named returns)
+	errorIndices []int    // indices of error return values
 }
 
 var _ ast.Visitor = (*walker)(nil)
@@ -283,21 +283,15 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 
 	case *ast.ReturnStmt:
 		// Doesn't return errors. Continue recursing.
-		if len(t.returnErrors) == 0 {
+		if len(t.errorIndices) == 0 {
 			return t
 		}
 
 		// Naked return.
 		// Add assignments to the named return values.
 		if n.Results == nil {
-			// TODO: record error names instead of return names
-			errorNames := make([]string, len(t.returnErrors))
-			for i, idx := range t.returnErrors {
-				errorNames[i] = t.returnNames[idx]
-			}
-
 			*t.edits = append(*t.edits, &assignWrapEdit{
-				Names: errorNames,
+				Names: t.errorNames,
 				Stmt:  n,
 			})
 
@@ -314,7 +308,7 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 			return nil
 		}
 	wrapLoop:
-		for _, idx := range t.returnErrors {
+		for _, idx := range t.errorIndices {
 			expr := n.Results[idx]
 
 			switch expr := expr.(type) {
@@ -359,9 +353,12 @@ func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
 	//   - unnamed error return
 	//   - named error return
 	var (
-		names  []string // names of return values, if any
+		names  []string // names of error return values
 		errors []int    // indices of error return values
 		count  int      // total number of return values
+		// Invariants:
+		//  len(errors) <= count
+		//  len(names) == 0 || len(names) == len(errors)
 	)
 	for _, field := range ft.Results.List {
 		isError := isIdent(field.Type, "error")
@@ -371,8 +368,8 @@ func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
 		if len(field.Names) > 0 {
 			// TODO: handle "_" names
 			for _, name := range field.Names {
-				names = append(names, name.Name)
 				if isError {
+					names = append(names, name.Name)
 					errors = append(errors, count)
 				}
 				count++
@@ -393,8 +390,8 @@ func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
 
 	// Shallow copy with new state.
 	newT := *t
-	newT.returnNames = names
-	newT.returnErrors = errors
+	newT.errorNames = names
+	newT.errorIndices = errors
 	newT.numReturns = count
 	return &newT
 }
