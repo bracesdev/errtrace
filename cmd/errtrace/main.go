@@ -74,17 +74,17 @@ type mainCmd struct {
 }
 
 func (cmd *mainCmd) Run(args []string) (exitCode int) {
-	cmd.log = log.New(cmd.Stderr, "errtrace: ", 0)
+	cmd.log = log.New(cmd.Stderr, "", 0)
 
 	var p mainParams
 	if err := p.Parse(cmd.Stderr, args); err != nil {
-		cmd.log.Println(err)
+		cmd.log.Println("errtrace:", err)
 		return 1
 	}
 
 	for _, file := range p.Files {
 		if err := cmd.processFile(p.Write, file); err != nil {
-			cmd.log.Printf("%s: %s", file, err)
+			cmd.log.Printf("%s:%s", file, err)
 			exitCode = 1
 		}
 	}
@@ -135,6 +135,7 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 	w := walker{
 		fset:     fset,
 		errtrace: errtracePkg,
+		logger:   cmd.log,
 		edits:    &edits,
 	}
 	ast.Walk(&w, f)
@@ -191,6 +192,8 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 
 		switch edit := edit.(type) {
 		case *appendImportEdit:
+			// Add the original node as-is.
+			_, _ = out.Write(src[start:end])
 			if errtracePkg == "errtrace" {
 				// Don't use named imports if we're using the default name.
 				fmt.Fprintf(out, "; import %q", "braces.dev/errtrace")
@@ -237,6 +240,7 @@ type walker struct {
 
 	fset     *token.FileSet // file set for positional information
 	errtrace string         // name of the errtrace package
+	logger   *log.Logger
 
 	// Outputs
 
@@ -245,12 +249,17 @@ type walker struct {
 
 	// State
 
-	parent       ast.Visitor // parent visitor, if any
-	returnNames  []string    // names of return values, if any
-	returnErrors []int       // indices of error return values
+	numReturns   int      // number of return values
+	returnNames  []string // names of return values, if any
+	returnErrors []int    // indices of error return values
 }
 
 var _ ast.Visitor = (*walker)(nil)
+
+func (t *walker) logf(pos token.Pos, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	t.logger.Printf("%s:%s", t.fset.Position(pos), msg)
+}
 
 func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 	switch n := n.(type) {
@@ -284,7 +293,14 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 		}
 
 		// Return with values.
-		// Wrap each nth return value in-place.
+		// Wrap each nth return value in-place
+		// unless the return is a "return foo()" call
+		// beacuse we can't wrap that.
+		if len(n.Results) != t.numReturns {
+			t.logf(n.Pos(), "return statement has %d results, expected %d",
+				len(n.Results), t.numReturns)
+			return nil
+		}
 	wrapLoop:
 		for _, idx := range t.returnErrors {
 			expr := n.Results[idx]
@@ -364,9 +380,9 @@ func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
 
 	// Shallow copy with new state.
 	newT := *t
-	newT.parent = t
 	newT.returnNames = names
 	newT.returnErrors = errors
+	newT.numReturns = count
 	return &newT
 }
 
@@ -383,11 +399,11 @@ type appendImportEdit struct {
 }
 
 func (e *appendImportEdit) Start() token.Pos {
-	return e.Node.End()
+	return e.Node.Pos()
 }
 
 func (e *appendImportEdit) End() token.Pos {
-	return e.Start() // start and end are the same
+	return e.Node.End()
 }
 
 // wrapEdit adds a errtrace.Wrap call around an expression.
