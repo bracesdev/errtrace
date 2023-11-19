@@ -301,9 +301,10 @@ type walker struct {
 
 	// State
 
-	numReturns   int      // number of return values
-	errorNames   []string // names of error return values (only if named returns)
-	errorIndices []int    // indices of error return values
+	numReturns   int                      // number of return values
+	errorObjs    map[*ast.Object]struct{} // objects for error return values (only if named returns)
+	errorNames   []string                 // names of error return values (only if named returns)
+	errorIndices []int                    // indices of error return values
 }
 
 var _ ast.Visitor = (*walker)(nil)
@@ -317,6 +318,12 @@ func (t *walker) Visit(n ast.Node) ast.Visitor {
 	switch n := n.(type) {
 	case *ast.FuncDecl:
 		return t.funcType(n, n.Type)
+
+	case *ast.DeferStmt:
+		// This is a bit inefficient;
+		// we'll recurse into the DeferStmt's function literal (if any) twice.
+		t.deferStmt(n)
+		return t
 
 	case *ast.FuncLit:
 		return t.funcType(n, n.Type)
@@ -343,12 +350,13 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	//   - unnamed error return
 	//   - named error return
 	var (
-		names  []string // names of error return values
-		errors []int    // indices of error return values
-		count  int      // total number of return values
+		objs    []*ast.Object // objects of error return values
+		names   []string      // names of error return values
+		indices []int         // indices of error return values
+		count   int           // total number of return values
 		// Invariants:
-		//  len(errors) <= count
-		//  len(names) == 0 || len(names) == len(errors)
+		//  len(indices) <= count
+		//  len(names) == 0 || len(names) == len(indices)
 	)
 	for _, field := range ft.Results.List {
 		isError := isIdent(field.Type, "error")
@@ -356,17 +364,17 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 		// field.Names is nil for unnamed return values.
 		// Either all returns are named or none are.
 		if len(field.Names) > 0 {
-			// TODO: handle "_" names
 			for _, name := range field.Names {
 				if isError {
+					objs = append(objs, name.Obj)
 					names = append(names, name.Name)
-					errors = append(errors, count)
+					indices = append(indices, count)
 				}
 				count++
 			}
 		} else {
 			if isError {
-				errors = append(errors, count)
+				indices = append(indices, count)
 			}
 			count++
 		}
@@ -374,14 +382,14 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 
 	// If there are no error return values,
 	// recurse to look for function literals.
-	if len(errors) == 0 {
+	if len(indices) == 0 {
 		return t
 	}
 
 	// If there's a single error return,
 	// and this function is a method named "Unwrap",
 	// don't wrap it so it plays nice with errors.Unwrap.
-	if len(errors) == 1 {
+	if len(indices) == 1 {
 		if decl, ok := parent.(*ast.FuncDecl); ok {
 			if decl.Recv != nil && isIdent(decl.Name, "Unwrap") {
 				return t
@@ -391,8 +399,9 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 
 	// Shallow copy with new state.
 	newT := *t
+	newT.errorObjs = setOf(objs)
 	newT.errorNames = names
-	newT.errorIndices = errors
+	newT.errorIndices = indices
 	newT.numReturns = count
 	return &newT
 }
@@ -451,6 +460,48 @@ wrapLoop:
 	}
 
 	return t
+}
+
+func (t *walker) deferStmt(n *ast.DeferStmt) {
+	// If there's a defer statement with a function literal,
+	// *and* this function has named return values,
+	// we'll want to watch for assignments to those return values.
+
+	if len(t.errorNames) == 0 || len(t.errorIndices) == 0 {
+		return // no named returns or errors
+	}
+
+	funcLit, ok := n.Call.Fun.(*ast.FuncLit)
+	if !ok {
+		return // not a function literal
+	}
+
+	ast.Inspect(funcLit.Body, func(n ast.Node) bool {
+		assign, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+
+		for i, lhs := range assign.Lhs {
+			ident, ok := lhs.(*ast.Ident)
+			if !ok {
+				continue // not an identifier
+			}
+
+			if _, ok := t.errorObjs[ident.Obj]; !ok {
+				continue // not an error assignment
+			}
+
+			// Assigning to a named error return value.
+			// Wrap the rhs in-place.
+			*t.inserts = append(*t.inserts,
+				&insertWrapOpen{Before: assign.Rhs[i].Pos()},
+				&insertWrapClose{After: assign.Rhs[i].End()},
+			)
+		}
+
+		return true
+	})
 }
 
 // insert is a request to add something to the source code.
@@ -544,4 +595,16 @@ func (e *insertWrapAssign) String() string {
 func isIdent(expr ast.Expr, name string) bool {
 	ident, ok := expr.(*ast.Ident)
 	return ok && ident.Name == name
+}
+
+func setOf[T comparable](xs []T) map[T]struct{} {
+	if len(xs) == 0 {
+		return nil
+	}
+
+	set := make(map[T]struct{})
+	for _, x := range xs {
+		set[x] = struct{}{}
+	}
+	return set
 }

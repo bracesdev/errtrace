@@ -34,3 +34,31 @@ func MultipleErrors() (err1, err2 error, ok bool, err3, err4 error) {
 	// Named
 	return err1, err2, ok, err3, err4
 }
+
+func UnderscoreNamed() (_ error) {
+	return NamedReturn("foo")
+}
+
+func UnderscoreNamedMultiple() (_ bool, err error) {
+	return false, NamedReturn("foo")
+}
+
+func DeferWrapNamed() (err error) {
+	defer func() {
+		err = fmt.Errorf("wrapped: %w", err)
+	}()
+
+	return NamedReturn("foo")
+}
+
+func DeferWrapNamedWithItsOwnError() (_ int, err error) {
+	// Both, the error returned by the deferred function
+	// and the named error wrapped by it should be wrapped.
+	defer func() error {
+		err = fmt.Errorf("wrapped: %w", err)
+
+		return errors.New("ignored")
+	}()
+
+	return 0, UnderscoreNamed()
+}
