@@ -239,7 +239,6 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 
 		switch it := it.(type) {
 		case *insertImportErrtrace:
-			// Add the original node as-is.
 			_, _ = io.WriteString(out, "; ")
 			if it.AddKeyword {
 				_, _ = io.WriteString(out, "import ")
