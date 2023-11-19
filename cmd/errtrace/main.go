@@ -212,9 +212,10 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 				fmt.Fprintf(out, "; import %s %q", errtracePkg, "braces.dev/errtrace")
 			}
 
-		case *wrapEdit:
+		case *wrapOpenEdit:
 			fmt.Fprintf(out, "%s.Wrap(", errtracePkg)
-			_, _ = out.Write(src[start:end])
+
+		case *wrapCloseEdit:
 			_, _ = out.WriteString(")")
 
 		case *assignWrapEdit:
@@ -332,9 +333,10 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 				}
 			}
 
-			*t.edits = append(*t.edits, &wrapEdit{
-				Expr: expr,
-			})
+			*t.edits = append(*t.edits,
+				&wrapOpenEdit{Expr: expr},
+				&wrapCloseEdit{Expr: expr},
+			)
 		}
 	}
 
@@ -422,26 +424,48 @@ func (e *appendImportEdit) String() string {
 	return fmt.Sprintf("append errtrace import after %T", e.Node)
 }
 
-// wrapEdit adds a errtrace.Wrap call around an expression.
+// wrapOpenEdit adds a errtrace.Wrap call before an expression.
 //
-//	foo() -> errtrace.Wrap(foo())
+//	foo() -> errtrace.Wrap(foo()
 //
-// This will be used in a majority of the cases including
-// assignments to named return values in deferred functions
-type wrapEdit struct {
+// This needs a corresponding wrapCloseEdit to close the call.
+type wrapOpenEdit struct {
 	Expr ast.Expr
 }
 
-func (e *wrapEdit) Start() token.Pos {
+func (e *wrapOpenEdit) Start() token.Pos {
 	return e.Expr.Pos()
 }
 
-func (e *wrapEdit) End() token.Pos {
+// TODO: drop End() from edit interface
+
+func (e *wrapOpenEdit) End() token.Pos {
+	return e.Expr.Pos()
+}
+
+func (e *wrapOpenEdit) String() string {
+	return fmt.Sprintf("wrap open %T", e.Expr)
+}
+
+// wrapCloseEdit closes a errtrace.Wrap call.
+//
+//	foo() -> foo())
+//
+// This needs a corresponding wrapOpenEdit to open the call.
+type wrapCloseEdit struct {
+	Expr ast.Expr
+}
+
+func (e *wrapCloseEdit) Start() token.Pos {
 	return e.Expr.End()
 }
 
-func (e *wrapEdit) String() string {
-	return fmt.Sprintf("wrap %T", e.Expr)
+func (e *wrapCloseEdit) End() token.Pos {
+	return e.Expr.End()
+}
+
+func (e *wrapCloseEdit) String() string {
+	return fmt.Sprintf("wrap close %T", e.Expr)
 }
 
 // assignWrapEdit wraps a variable in-place with an errtrace.Wrap call.

@@ -31,4 +31,10 @@ func HasFunctionLiteral() {
 	fmt.Println(err)
 }
 
+func ImmediatelyInvokedFunctionExpression() error {
+	return func() error {
+		return errors.New("sadness")
+	}()
+}
+
 // TODO: multiple return values without variables
