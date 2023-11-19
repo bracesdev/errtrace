@@ -231,9 +231,9 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 	defer out.Flush()
 
 	var lastOffset int
-	file := fset.File(f.Pos())
+	filePos := fset.File(f.Pos()) // position information for this file
 	for _, it := range inserts {
-		offset := file.Offset(it.Pos())
+		offset := filePos.Offset(it.Pos())
 		_, _ = out.Write(src[lastOffset:offset])
 		lastOffset = offset
 
