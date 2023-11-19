@@ -7,6 +7,14 @@ import (
 	"fmt"; "braces.dev/errtrace"
 )
 
+func NoError() (x int) {
+	return 0
+}
+
+func NoErrorNaked() (x int) {
+	return
+}
+
 func NakedReturn(s string) (err error) {
 	err = errors.New("sadness: " + s)
 	fmt.Println("Reporting sadness")
