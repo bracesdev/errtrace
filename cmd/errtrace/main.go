@@ -316,10 +316,10 @@ func (t *walker) logf(pos token.Pos, format string, args ...interface{}) {
 func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 	switch n := n.(type) {
 	case *ast.FuncDecl:
-		return t.funcType(n.Type)
+		return t.funcType(n, n.Type)
 
 	case *ast.FuncLit:
-		return t.funcType(n.Type)
+		return t.funcType(n, n.Type)
 
 	case *ast.ReturnStmt:
 		// Doesn't return errors. Continue recursing.
@@ -377,7 +377,7 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 	return t
 }
 
-func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
+func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	// If the function does not return anything,
 	// we still need to recurse into any function literals.
 	// Just return this visitor to continue recursing.
@@ -425,6 +425,17 @@ func (t *walker) funcType(ft *ast.FuncType) ast.Visitor {
 	// recurse to look for function literals.
 	if len(errors) == 0 {
 		return t
+	}
+
+	// If there's a single error return,
+	// and this function is a method named "Unwrap",
+	// don't wrap it so it plays nice with errors.Unwrap.
+	if len(errors) == 1 {
+		if decl, ok := parent.(*ast.FuncDecl); ok {
+			if decl.Recv != nil && isIdent(decl.Name, "Unwrap") {
+				return t
+			}
+		}
 	}
 
 	// Shallow copy with new state.
