@@ -14,7 +14,7 @@ package main
 //   - -toolexec: run as a tool executor, fit for use with 'go build -toolexec'
 
 import (
-	"bufio"
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -218,17 +218,7 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 		return inserts[i].Pos() < inserts[j].Pos()
 	})
 
-	outw := cmd.Stdout
-	if write {
-		f, err := os.Create(filename)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		outw = f
-	}
-	out := bufio.NewWriter(outw)
-	defer out.Flush()
+	out := bytes.NewBuffer(nil)
 
 	var lastOffset int
 	filePos := fset.File(f.Pos()) // position information for this file
@@ -283,7 +273,12 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 	}
 	_, _ = out.Write(src[lastOffset:]) // flush remaining
 
-	return nil
+	if write {
+		return os.WriteFile(filename, out.Bytes(), 0o644)
+	}
+
+	_, err = cmd.Stdout.Write(out.Bytes())
+	return err
 }
 
 type walker struct {
