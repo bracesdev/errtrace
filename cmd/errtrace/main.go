@@ -313,7 +313,7 @@ func (t *walker) logf(pos token.Pos, format string, args ...interface{}) {
 	t.logger.Printf("%s:%s", t.fset.Position(pos), msg)
 }
 
-func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
+func (t *walker) Visit(n ast.Node) ast.Visitor {
 	switch n := n.(type) {
 	case *ast.FuncDecl:
 		return t.funcType(n, n.Type)
@@ -322,56 +322,7 @@ func (t *walker) Visit(n ast.Node) (w ast.Visitor) {
 		return t.funcType(n, n.Type)
 
 	case *ast.ReturnStmt:
-		// Doesn't return errors. Continue recursing.
-		if len(t.errorIndices) == 0 {
-			return t
-		}
-
-		// Naked return.
-		// Add assignments to the named return values.
-		if n.Results == nil {
-			*t.inserts = append(*t.inserts, &insertWrapAssign{
-				Names:  t.errorNames,
-				Before: n.Pos(),
-			})
-
-			return nil
-		}
-
-		// Return with values.
-		// Wrap each nth return value in-place
-		// unless the return is a "return foo()" call
-		// beacuse we can't wrap that.
-		if len(n.Results) != t.numReturns {
-			t.logf(n.Pos(), "return statement has %d results, expected %d",
-				len(n.Results), t.numReturns)
-			return nil
-		}
-	wrapLoop:
-		for _, idx := range t.errorIndices {
-			expr := n.Results[idx]
-
-			switch expr := expr.(type) {
-			case *ast.CallExpr:
-				// Ignore if it's already errtrace.Wrap(...).
-				if sel, ok := expr.Fun.(*ast.SelectorExpr); ok {
-					if isIdent(sel.X, t.errtrace) && isIdent(sel.Sel, "Wrap") {
-						continue wrapLoop
-					}
-				}
-
-			case *ast.Ident:
-				// Optimization: ignore if it's "nil".
-				if expr.Name == "nil" {
-					continue wrapLoop
-				}
-			}
-
-			*t.inserts = append(*t.inserts,
-				&insertWrapOpen{Before: expr.Pos()},
-				&insertWrapClose{After: expr.End()},
-			)
-		}
+		return t.returnStmt(n)
 	}
 
 	return t
@@ -444,6 +395,62 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	newT.errorIndices = errors
 	newT.numReturns = count
 	return &newT
+}
+
+func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
+	// Doesn't return errors. Continue recursing.
+	if len(t.errorIndices) == 0 {
+		return t
+	}
+
+	// Naked return.
+	// Add assignments to the named return values.
+	if n.Results == nil {
+		*t.inserts = append(*t.inserts, &insertWrapAssign{
+			Names:  t.errorNames,
+			Before: n.Pos(),
+		})
+
+		return nil
+	}
+
+	// Return with values.
+	// Wrap each nth return value in-place
+	// unless the return is a "return foo()" call
+	// beacuse we can't wrap that.
+	if len(n.Results) != t.numReturns {
+		t.logf(n.Pos(), "return statement has %d results, expected %d",
+			len(n.Results), t.numReturns)
+		return nil
+	}
+
+wrapLoop:
+	for _, idx := range t.errorIndices {
+		expr := n.Results[idx]
+
+		switch expr := expr.(type) {
+		case *ast.CallExpr:
+			// Ignore if it's already errtrace.Wrap(...).
+			if sel, ok := expr.Fun.(*ast.SelectorExpr); ok {
+				if isIdent(sel.X, t.errtrace) && isIdent(sel.Sel, "Wrap") {
+					continue wrapLoop
+				}
+			}
+
+		case *ast.Ident:
+			// Optimization: ignore if it's "nil".
+			if expr.Name == "nil" {
+				continue wrapLoop
+			}
+		}
+
+		*t.inserts = append(*t.inserts,
+			&insertWrapOpen{Before: expr.Pos()},
+			&insertWrapClose{After: expr.End()},
+		)
+	}
+
+	return t
 }
 
 // insert is a request to add something to the source code.
