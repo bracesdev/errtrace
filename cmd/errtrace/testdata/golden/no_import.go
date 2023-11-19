@@ -11,5 +11,3 @@ func (*myError) Error() string {
 func Try() error {
 	return &myError{}
 }
-
-// TODO: multiple return values without variables
