@@ -7,6 +7,6 @@ func getcallerpc() uintptr
 // GetCaller gets the caller's PC.
 //
 //go:inline
-func GetCaller[T any](firstArgAddr *T) uintptr {
+func GetCaller() uintptr {
 	return getcallerpc()
 }

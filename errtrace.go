@@ -27,7 +27,7 @@ func Wrap(err error) error {
 		return nil
 	}
 
-	callerPC := pc.GetCaller(&err)
+	callerPC := pc.GetCaller()
 	et := _arena.Take()
 	et.err = err
 	et.pc = callerPC
