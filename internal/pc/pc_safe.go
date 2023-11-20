@@ -1,13 +1,11 @@
-//go:build safe || !(amd64 || 386 || arm64)
+//go:build safe || !(amd64 || arm64)
 
 package pc
 
 import "runtime"
 
 // GetCaller gets the caller's caller's PC.
-//
-// Note: firstArgAddr is used with unsafe, it's ignored for safe.
-func GetCaller[T any](firstArgAddr *T) uintptr {
+func GetCaller() uintptr {
 	const skip = 1 + // frame for Callers
 		1 + // frame for GetCaller
 		1 // frame for our caller, which should be errtrace.Wrap

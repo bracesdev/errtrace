@@ -7,7 +7,7 @@ import (
 
 //go:noinline
 func wrap(err error) uintptr {
-	return GetCaller(&err)
+	return GetCaller()
 }
 
 func BenchmarkGetCaller(b *testing.B) {
