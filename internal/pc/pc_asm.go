@@ -1,4 +1,4 @@
-//go:build !safe && arm64
+//go:build !safe && (arm64 || amd64)
 
 package pc
 
