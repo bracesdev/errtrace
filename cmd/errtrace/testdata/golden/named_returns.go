@@ -5,6 +5,9 @@ package foo
 import (
 	"errors"
 	"fmt"
+	"os"
+
+	"go.uber.org/multierr"
 )
 
 func NoError() (x int) {
@@ -69,4 +72,13 @@ func DeferWrapNamedWithItsOwnError() (_ int, err error) {
 	}()
 
 	return 0, UnderscoreNamed()
+}
+
+func DeferToAnotherFunction() (err error) {
+	f, err := os.Open("foo.txt")
+	if err != nil {
+		return err
+	}
+	defer multierr.AppendInto(&err, multierr.Close(f))
+	return nil
 }

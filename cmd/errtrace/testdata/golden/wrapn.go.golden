@@ -23,3 +23,11 @@ func hasFive() (a int, b bool, c string, d int, e error) {
 func hasSix() (a int, b bool, c string, d int, e bool, f error) {
 	return errtrace.Wrap6(bar.Six())
 }
+
+func hasSeven() (a int, b bool, c string, d int, e bool, f string, g error) {
+	return bar.Seven() // want:"skipping function with too many return values"
+}
+
+func multipleErrors() (x int, err1, err2 error) {
+	return bar.MultipleErrors() // want:"skipping function with multiple error returns"
+}

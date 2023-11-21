@@ -2,7 +2,11 @@
 
 package foo
 
-import "strconv"; import "braces.dev/errtrace"
+import (
+	"io"
+	"os"
+	"strconv"; "braces.dev/errtrace"
+)
 
 func Unwrapped(s string) (int, error) {
 	i, err := strconv.Atoi(s)
@@ -14,4 +18,19 @@ func Unwrapped(s string) (int, error) {
 
 func Parse(s string) (int, error) {
 	return errtrace.Wrap2(strconv.Atoi(s))
+}
+
+func DeferWithoutNamedReturns(s string) error {
+	f, err := os.Open(s)
+	if err != nil {
+		return errtrace.Wrap(err)
+	}
+	defer f.Close()
+
+	bs, err := io.ReadAll(f)
+	if err != nil {
+		return errtrace.Wrap(err)
+	}
+
+	return nil
 }

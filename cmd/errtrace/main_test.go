@@ -3,13 +3,29 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"go/parser"
+	"go/token"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 )
 
+// TestGolden runs errtrace on all .go files inside testdata/golden,
+// and compares the output to the corresponding .golden file.
+// Files must match exactly.
+//
+// If log messages are expected associated with specific lines,
+// they can be included in the source and the .golden file
+// in the format:
+//
+//	foo() // want:"log message"
+//
+// The log message will be matched against the output of errtrace on stderr.
+// The string must be a valid Go string literal.
 func TestGolden(t *testing.T) {
 	files, err := filepath.Glob("testdata/golden/*.go")
 	if err != nil {
@@ -30,6 +46,11 @@ func testGolden(t *testing.T, file string) {
 		t.Fatal(err)
 	}
 
+	wantLogs, err := extractLogs(giveSrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	wantSrc, err := os.ReadFile(file + ".golden")
 	if err != nil {
 		t.Fatal("Bad test: missing .golden file:", err)
@@ -41,16 +62,17 @@ func testGolden(t *testing.T, file string) {
 		t.Fatal(err)
 	}
 
-	var output bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	defer func() {
 		if t.Failed() {
-			t.Logf("output:\n%s", output.String())
+			t.Logf("stdout:\n%s", indent(stdout.String()))
+			t.Logf("stderr:\n%s", indent(stderr.String()))
 		}
 	}()
 
 	exitCode := (&mainCmd{
-		Stderr: &output,
-		Stdout: &output,
+		Stdout: &stdout, // We don't care about stdout.
+		Stderr: &stderr,
 	}).Run([]string{"-w", srcPath})
 
 	if want := 0; exitCode != want {
@@ -63,28 +85,35 @@ func testGolden(t *testing.T, file string) {
 	}
 
 	if want, got := string(wantSrc), string(gotSrc); got != want {
-		t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff(want, got)))
+		t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diffLines(want, got)))
+	}
+
+	// Check that the log messages match.
+	gotLogs, err := parseLogOutput(stderr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := diff(wantLogs, gotLogs); diff != "" {
+		t.Errorf("log messages differ:\n%s", indent(diff))
 	}
 
 	// Re-run on the output of the first run.
 	// This should be a no-op.
 	t.Run("idempotent", func(t *testing.T) {
+		var got bytes.Buffer
 		exitCode := (&mainCmd{
-			Stderr: &output,
-			Stdout: &output,
-		}).Run([]string{"-w", srcPath})
+			Stderr: io.Discard,
+			Stdout: &got,
+		}).Run([]string{srcPath})
 
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
 		}
 
-		gotSrc, err := os.ReadFile(srcPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if want, got := string(wantSrc), string(gotSrc); got != want {
-			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff(want, got)))
+		gotSrc := got.String()
+		if want, got := string(wantSrc), gotSrc; got != want {
+			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diffLines(want, got)))
 		}
 	})
 }
@@ -93,20 +122,21 @@ func indent(s string) string {
 	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
 }
 
+func diffLines(want, got string) string {
+	return diff(strings.Split(want, "\n"), strings.Split(got, "\n"))
+}
+
 // diff is a very simple diff implementation
 // that does a line-by-line comparison of two strings.
-func diff(want, got string) string {
-	wantLines := strings.Split(want, "\n")
-	gotLines := strings.Split(got, "\n")
-
+func diff[T comparable](want, got []T) string {
 	// We want to pad diff output with line number in the format:
 	//
 	//   - 1 | line 1
 	//   + 2 | line 2
 	//
 	// To do that, we need to know the longest line number.
-	longest := max(len(wantLines), len(gotLines))
-	lineFormat := fmt.Sprintf("%%s %%-%dd | %%s\n", len(strconv.Itoa(longest))) // e.g. "%-2d | %s%s\n"
+	longest := max(len(want), len(got))
+	lineFormat := fmt.Sprintf("%%s %%-%dd | %%v\n", len(strconv.Itoa(longest))) // e.g. "%-2d | %s%v\n"
 	const (
 		minus = "-"
 		plus  = "+"
@@ -114,14 +144,14 @@ func diff(want, got string) string {
 	)
 
 	var buf strings.Builder
-	writeLine := func(idx int, kind, line string) {
-		fmt.Fprintf(&buf, lineFormat, kind, idx+1, line)
+	writeLine := func(idx int, kind string, v T) {
+		fmt.Fprintf(&buf, lineFormat, kind, idx+1, v)
 	}
 
-	var lastEqs []string
-	for i := 0; i < len(wantLines) || i < len(gotLines); i++ {
-		if i < len(wantLines) && i < len(gotLines) && wantLines[i] == gotLines[i] {
-			lastEqs = append(lastEqs, wantLines[i])
+	var lastEqs []T
+	for i := 0; i < len(want) || i < len(got); i++ {
+		if i < len(want) && i < len(got) && want[i] == got[i] {
+			lastEqs = append(lastEqs, want[i])
 			continue
 		}
 
@@ -133,15 +163,89 @@ func diff(want, got string) string {
 			}
 		}
 
-		if i < len(wantLines) {
-			writeLine(i, minus, wantLines[i])
+		if i < len(want) {
+			writeLine(i, minus, want[i])
 		}
-		if i < len(gotLines) {
-			writeLine(i, plus, gotLines[i])
+		if i < len(got) {
+			writeLine(i, plus, got[i])
 		}
 
 		lastEqs = nil
 	}
 
 	return buf.String()
+}
+
+type logLine struct {
+	Line int
+	Msg  string
+}
+
+// extractLogs parses the "// want" comments in src
+// into a slice of logLine structs.
+func extractLogs(src []byte) ([]logLine, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", src, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
+	}
+
+	var logs []logLine
+	for _, c := range f.Comments {
+		for _, l := range c.List {
+			if !strings.HasPrefix(l.Text, "// want:") {
+				continue
+			}
+
+			pos := fset.Position(l.Pos())
+			lit := strings.TrimPrefix(l.Text, "// want:")
+
+			s, err := strconv.Unquote(lit)
+			if err != nil {
+				return nil, fmt.Errorf("%s:bad string literal: %s", pos, lit)
+			}
+
+			logs = append(logs, logLine{Line: pos.Line, Msg: s})
+		}
+	}
+
+	sort.Slice(logs, func(i, j int) bool {
+		return logs[i].Line < logs[j].Line
+	})
+
+	return logs, nil
+}
+
+func parseLogOutput(s string) ([]logLine, error) {
+	var logs []logLine
+	for _, line := range strings.Split(s, "\n") {
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(line, ":", 4)
+		if len(parts) != 4 {
+			return nil, fmt.Errorf("bad log line: %q", line)
+		}
+
+		var msg string
+		switch len(parts) {
+		case 3:
+			msg = parts[2] // file:line:msg
+		case 4:
+			msg = parts[3] // file:line:column:msg
+		}
+
+		line, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return nil, fmt.Errorf("bad log line: %q", line)
+		}
+
+		logs = append(logs, logLine{
+			Line: line,
+			Msg:  msg,
+		})
+	}
+
+	return logs, nil
 }
