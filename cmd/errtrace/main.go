@@ -461,17 +461,22 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 	//	}
 	// This is only supported if numReturns <= 6 and only the last return value is an error.
 	if len(n.Results) == 1 && t.numReturns > 1 {
-		if t.numReturns > 6 {
+		if _, ok := n.Results[0].(*ast.CallExpr); !ok {
+			t.logf(n.Pos(), "skipping function with incorrect number of return values: got %d, want %d", len(n.Results), t.numReturns)
+			return t
+		}
+
+		switch {
+		case t.numReturns > 6:
 			t.logf(n.Pos(), "skipping function with too many return values")
-			return t
-		}
-
-		if len(t.errorIndices) != 1 || t.errorIndices[0] != t.numReturns-1 {
+		case len(t.errorIndices) != 1:
 			t.logf(n.Pos(), "skipping function with multiple error returns")
-			return t
+		case t.errorIndices[0] != t.numReturns-1:
+			t.logf(n.Pos(), "skipping function with non-final error return")
+		default:
+			t.wrapExpr(t.numReturns, n.Results[0])
 		}
 
-		t.wrapExpr(t.numReturns, n.Results[0])
 		return t
 	}
 

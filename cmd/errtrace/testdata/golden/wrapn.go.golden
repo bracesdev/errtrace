@@ -28,6 +28,14 @@ func hasSeven() (a int, b bool, c string, d int, e bool, f string, g error) {
 	return bar.Seven() // want:"skipping function with too many return values"
 }
 
+func nonFinalError() (error, bool) {
+	return bar.NonFinalError() // want:"skipping function with non-final error return"
+}
+
 func multipleErrors() (x int, err1, err2 error) {
 	return bar.MultipleErrors() // want:"skipping function with multiple error returns"
+}
+
+func invalid() (x int, err error) {
+	return 42 // want:"skipping function with incorrect number of return values: got 1, want 2"
 }
