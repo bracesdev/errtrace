@@ -16,7 +16,7 @@ import (
 //go:embed errtrace_line_test.go
 var errtraceLineTestFile string
 
-// Note: The following aests verify the line, and assume that the
+// Note: The following tests verify the line, and assume that the
 // test names are unique, and that they are the only tests in this file.
 func TestWrap_Line(t *testing.T) {
 	failed := errors.New("failed")
