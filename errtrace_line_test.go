@@ -55,6 +55,63 @@ func TestWrap_Line(t *testing.T) {
 				return failed
 			},
 		},
+
+		// Sanity testing for WrapN functions.
+		{
+			name: "Test Wrap2", // @group
+			f: func() (retErr error) {
+				nested := func() (int, error) {
+					return errtrace.Wrap2(returnErr2()) // @trace
+				}
+
+				_, err := nested()
+				return err
+			},
+		},
+		{
+			name: "Test Wrap3", // @group
+			f: func() (retErr error) {
+				nested := func() (int, int, error) {
+					return errtrace.Wrap3(returnErr3()) // @trace
+				}
+
+				_, _, err := nested()
+				return err
+			},
+		},
+		{
+			name: "Test Wrap4", // @group
+			f: func() (retErr error) {
+				nested := func() (int, int, int, error) {
+					return errtrace.Wrap4(returnErr4()) // @trace
+				}
+
+				_, _, _, err := nested()
+				return err
+			},
+		},
+		{
+			name: "Test Wrap5", // @group
+			f: func() (retErr error) {
+				nested := func() (int, int, int, int, error) {
+					return errtrace.Wrap5(returnErr5()) // @trace
+				}
+
+				_, _, _, _, err := nested()
+				return err
+			},
+		},
+		{
+			name: "Test Wrap6", // @group
+			f: func() (retErr error) {
+				nested := func() (int, int, int, int, int, error) {
+					return errtrace.Wrap6(returnErr6()) // @trace
+				}
+
+				_, _, _, _, _, err := nested()
+				return err
+			},
+		},
 	}
 
 	testMarkers, err := parseMarkers(errtraceLineTestFile)
@@ -80,6 +137,12 @@ func TestWrap_Line(t *testing.T) {
 		})
 	}
 }
+
+func returnErr2() (int, error)                     { return 1, errors.New("test") }
+func returnErr3() (int, int, error)                { return 1, 2, errors.New("test") }
+func returnErr4() (int, int, int, error)           { return 1, 2, 3, errors.New("test") }
+func returnErr5() (int, int, int, int, error)      { return 1, 2, 3, 4, errors.New("test") }
+func returnErr6() (int, int, int, int, int, error) { return 1, 2, 3, 4, 5, errors.New("test") }
 
 // parseMarkers parses the source file and returns a map
 // from marker group name to line numbers in that group.
