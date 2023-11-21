@@ -12,4 +12,6 @@ func Unwrapped(s string) (int, error) {
 	return i + 42, nil
 }
 
-// TODO: multiple return values without variables
+func Parse(s string) (int, error) {
+	return strconv.Atoi(s)
+}
