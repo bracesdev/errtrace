@@ -23,3 +23,11 @@ func AlreadyWrapped(s string) (int, error) {
 	}
 	return i + 42, nil
 }
+
+func SkipNew() error {
+	return errtrace.New("test")
+}
+
+func SkipErrorf() error {
+	return errtrace.Errorf("foo: %v", SkipNew())
+}

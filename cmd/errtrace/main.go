@@ -580,7 +580,9 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 		return false
 	}
 
-	return strings.HasPrefix(sel.Sel.Name, "Wrap")
+	return strings.HasPrefix(sel.Sel.Name, "Wrap") ||
+		sel.Sel.Name == "New" ||
+		sel.Sel.Name == "Errorf"
 }
 
 // insert is a request to add something to the source code.
