@@ -7,23 +7,15 @@ import (
 	"braces.dev/errtrace/internal/pc"
 )
 
-// New returns an error that formats as the given text, similar to `errors.New`.
-//
-// It adds informtaion about the program counter of the caller to the error, see
-// `Wrap` for details.
-//
-// This helper is a simpler alternative to `errtrace.Wrap(errors.New(...))`.
+// New returns an error that formats as the given text. It's equivalent to
+// [errors.New] followed by [Wrap] to add caller information.
 func New(text string) error {
 	return wrap(errors.New(text), pc.GetCaller())
 }
 
 // Errorf formats according to a format specifier and returns the string as a
-// value that satisfies error, similar to `fmt.Errorf`.
-//
-// It adds informtaion about the program counter of the caller to the error, see
-// `Wrap` for details.
-//
-// This helper is a simpler alternative to `errtrace.Wrap(fmt.Errorf(...))`.
+// value that satisfies error. It's equivalent to [fmt.Errorf] followed by
+// [Wrap] to add caller information.
 func Errorf(format string, args ...any) error {
 	return wrap(fmt.Errorf(format, args...), pc.GetCaller())
 }
