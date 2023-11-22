@@ -56,6 +56,27 @@ func TestWrap_Line(t *testing.T) {
 			},
 		},
 
+		// Test error creation helpers.
+		{
+			name: "New", // @group
+			f: func() (retErr error) {
+				return errtrace.New("test") // @trace
+			},
+		},
+		{
+			name: "Errorf with no error args", // @group
+			f: func() (retErr error) {
+				return errtrace.Errorf("test %v", 1) // @trace
+			},
+		},
+		{
+			name: "Errorf with wrapped error arg", // @group
+			f: func() (retErr error) {
+				err := errtrace.New("test1")             // @trace
+				return errtrace.Errorf("test2: %w", err) // @trace
+			},
+		},
+
 		// Sanity testing for WrapN functions.
 		{
 			name: "Test Wrap2", // @group
@@ -123,16 +144,18 @@ func TestWrap_Line(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			markers := testMarkers[tt.name]
-			if want, got := 1, len(markers); want != got {
-				t.Fatalf("expected %v markers, got %v: %v", want, got, markers)
+			if len(markers) == 0 {
+				t.Fatalf("didn't find any markers for test")
 			}
 
-			wantLine := markers[0]
 			gotErr := tt.f()
 			got := errtrace.FormatString(gotErr)
-			wantFileLine := fmt.Sprintf("errtrace_line_test.go:%v", wantLine)
-			if !strings.Contains(got, wantFileLine) {
-				t.Errorf("formatted output is missing file:line %q in:\n%s", wantFileLine, got)
+
+			for _, wantLine := range markers {
+				wantFileLine := fmt.Sprintf("errtrace_line_test.go:%v", wantLine)
+				if !strings.Contains(got, wantFileLine) {
+					t.Errorf("formatted output is missing file:line %q in:\n%s", wantFileLine, got)
+				}
 			}
 		})
 	}
