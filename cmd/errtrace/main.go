@@ -44,6 +44,19 @@ type mainParams struct {
 	Files  []string // list of files to process
 }
 
+func (p *mainParams) shouldFormat() bool {
+	switch p.Format {
+	case formatAuto:
+		return p.Write
+	case formatAlways:
+		return true
+	case formatNever:
+		return false
+	default:
+		panic(fmt.Sprintf("unknown format %q", p.Format))
+	}
+}
+
 func (p *mainParams) Parse(w io.Writer, args []string) error {
 	flag := flag.NewFlagSet("errtrace", flag.ContinueOnError)
 	flag.SetOutput(w)
@@ -147,7 +160,7 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 
 	for _, file := range p.Files {
 		req := fileRequest{
-			Format:   p.Format == formatAuto && p.Write,
+			Format:   p.shouldFormat(),
 			Write:    p.Write,
 			Filename: file,
 		}

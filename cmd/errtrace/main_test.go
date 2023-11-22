@@ -205,6 +205,37 @@ func TestFormatFlagString(t *testing.T) {
 	}
 }
 
+func TestShouldFormat(t *testing.T) {
+	tests := []struct {
+		name string
+		give mainParams
+		want bool
+	}{
+		{"auto/no write", mainParams{Format: formatAuto}, false},
+		{"auto/write", mainParams{Format: formatAuto, Write: true}, true},
+		{"always", mainParams{Format: formatAlways}, true},
+		{"never", mainParams{Format: formatNever}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if want, got := tt.want, tt.give.shouldFormat(); got != want {
+				t.Errorf("got %v, want %v", got, want)
+			}
+		})
+	}
+
+	t.Run("unknown", func(t *testing.T) {
+		defer func() {
+			if err := recover(); err == nil {
+				t.Fatal("no panic")
+			}
+		}()
+
+		(&mainParams{Format: format(999)}).shouldFormat()
+	})
+}
+
 // -format=auto should format the file if used with -w,
 // and not format the file if used without -w.
 func TestFormatAuto(t *testing.T) {
