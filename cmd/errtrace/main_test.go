@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -73,7 +74,7 @@ func testGolden(t *testing.T, file string) {
 	exitCode := (&mainCmd{
 		Stdout: &stdout, // We don't care about stdout.
 		Stderr: &stderr,
-	}).Run([]string{"-w", srcPath})
+	}).Run([]string{"-format=never", "-w", srcPath})
 
 	if want := 0; exitCode != want {
 		t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -114,6 +115,199 @@ func testGolden(t *testing.T, file string) {
 		gotSrc := got.String()
 		if want, got := string(wantSrc), gotSrc; got != want {
 			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diffLines(want, got)))
+		}
+	})
+}
+
+func TestParseFormatFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		give []string
+		want format
+	}{
+		{
+			name: "default",
+			want: formatAuto,
+		},
+		{
+			name: "auto explicit",
+			give: []string{"-format=auto"},
+			want: formatAuto,
+		},
+		{
+			name: "always",
+			give: []string{"-format=always"},
+			want: formatAlways,
+		},
+		{
+			name: "always explicit",
+			give: []string{"-format"},
+			want: formatAlways,
+		},
+		{
+			name: "never",
+			give: []string{"-format=never"},
+			want: formatNever,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flag := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
+			flag.SetOutput(io.Discard)
+
+			var got format
+			flag.Var(&got, "format", "")
+			if err := flag.Parse(tt.give); err != nil {
+				t.Fatal(err)
+			}
+
+			if want, got := tt.want, got; got != want {
+				t.Errorf("got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestFormatFlagError(t *testing.T) {
+	flag := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
+	flag.SetOutput(io.Discard)
+
+	var got format
+	flag.Var(&got, "format", "")
+	err := flag.Parse([]string{"-format=unknown"})
+	if err == nil {
+		t.Fatal("no error")
+	}
+
+	if want, got := `invalid format "unknown"`, err.Error(); !strings.Contains(got, want) {
+		t.Errorf("error %q does not contain %q", got, want)
+	}
+}
+
+func TestFormatFlagString(t *testing.T) {
+	tests := []struct {
+		give format
+		want string
+	}{
+		{formatAuto, "auto"},
+		{formatAlways, "always"},
+		{formatNever, "never"},
+		{format(999), "format(999)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%d", tt.give), func(t *testing.T) {
+			if want, got := tt.want, tt.give.String(); got != want {
+				t.Errorf("got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestShouldFormat(t *testing.T) {
+	tests := []struct {
+		name string
+		give mainParams
+		want bool
+	}{
+		{"auto/no write", mainParams{Format: formatAuto}, false},
+		{"auto/write", mainParams{Format: formatAuto, Write: true}, true},
+		{"always", mainParams{Format: formatAlways}, true},
+		{"never", mainParams{Format: formatNever}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if want, got := tt.want, tt.give.shouldFormat(); got != want {
+				t.Errorf("got %v, want %v", got, want)
+			}
+		})
+	}
+
+	t.Run("unknown", func(t *testing.T) {
+		defer func() {
+			if err := recover(); err == nil {
+				t.Fatal("no panic")
+			}
+		}()
+
+		(&mainParams{Format: format(999)}).shouldFormat()
+	})
+}
+
+// -format=auto should format the file if used with -w,
+// and not format the file if used without -w.
+func TestFormatAuto(t *testing.T) {
+	give := strings.Join([]string{
+		"package foo",
+		`import "errors"`,
+		"func foo() error {",
+		`	return errors.New("foo")`,
+		"}",
+	}, "\n")
+
+	wantUnformatted := strings.Join([]string{
+		"package foo",
+		`import "errors"; import "braces.dev/errtrace"`,
+		"func foo() error {",
+		`	return errtrace.Wrap(errors.New("foo"))`,
+		"}",
+	}, "\n")
+
+	wantFormatted := strings.Join([]string{
+		"package foo",
+		"",
+		`import "errors"`,
+		`import "braces.dev/errtrace"`,
+		"",
+		"func foo() error {",
+		`	return errtrace.Wrap(errors.New("foo"))`,
+		"}",
+		"",
+	}, "\n")
+
+	t.Run("write", func(t *testing.T) {
+		srcPath := filepath.Join(t.TempDir(), "src.go")
+		if err := os.WriteFile(srcPath, []byte(give), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		exitCode := (&mainCmd{
+			Stdout: io.Discard,
+			Stderr: io.Discard,
+		}).Run([]string{"-w", srcPath})
+		if want := 0; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+
+		bs, err := os.ReadFile(srcPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if want, got := wantFormatted, string(bs); got != want {
+			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
+		}
+	})
+
+	t.Run("stdout", func(t *testing.T) {
+		srcPath := filepath.Join(t.TempDir(), "src.go")
+		if err := os.WriteFile(srcPath, []byte(give), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		var out bytes.Buffer
+		exitCode := (&mainCmd{
+			Stdout: &out,
+			Stderr: io.Discard,
+		}).Run([]string{srcPath})
+		if want := 0; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+
+		if want, got := wantUnformatted, out.String(); got != want {
+			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
 		}
 	})
 }

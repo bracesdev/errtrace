@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	gofmt "go/format"
 	"go/parser"
 	"go/token"
 	"io"
@@ -38,8 +39,22 @@ func main() {
 }
 
 type mainParams struct {
-	Write bool     // -w
-	Files []string // list of files to process
+	Write  bool     // -w
+	Format format   // -format
+	Files  []string // list of files to process
+}
+
+func (p *mainParams) shouldFormat() bool {
+	switch p.Format {
+	case formatAuto:
+		return p.Write
+	case formatAlways:
+		return true
+	case formatNever:
+		return false
+	default:
+		panic(fmt.Sprintf("unknown format %q", p.Format))
+	}
 }
 
 func (p *mainParams) Parse(w io.Writer, args []string) error {
@@ -50,8 +65,10 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		flag.PrintDefaults()
 	}
 
+	flag.Var(&p.Format, "format", "whether to format ouput; one of: [auto, always, never].\n"+
+		"auto will format if the output is being written to a file.")
 	flag.BoolVar(&p.Write, "w", false,
-		"write result to the given source files instead of stdout")
+		"write result to the given source files instead of stdout.")
 	// TODO: toolexec mode
 
 	if err := flag.Parse(args); err != nil {
@@ -65,6 +82,64 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	}
 
 	return nil
+}
+
+// format specifies whether the output should be gofmt'd.
+type format int
+
+var _ flag.Getter = (*format)(nil)
+
+const (
+	// formatAuto formats the output
+	// if it's being written to a file
+	// but not if it's being written to stdout.
+	//
+	// This is the default.
+	formatAuto format = iota
+
+	// formatAlways always formats the output.
+	formatAlways
+
+	// formatNever never formats the output.
+	formatNever
+)
+
+func (f *format) Get() interface{} {
+	return *f
+}
+
+// IsBoolFlag tells the flag package that plain "-format" is a valid flag.
+// When "-format" is used without a value,
+// the flag package will call Set("true") on the flag.
+func (f *format) IsBoolFlag() bool {
+	return true
+}
+
+func (f *format) Set(s string) error {
+	switch s {
+	case "auto":
+		*f = formatAuto
+	case "always", "true": // "true" comes from "-format" without a value
+		*f = formatAlways
+	case "never":
+		*f = formatNever
+	default:
+		return fmt.Errorf("invalid format %q is not one of [auto, always, never]", s)
+	}
+	return nil
+}
+
+func (f *format) String() string {
+	switch *f {
+	case formatAuto:
+		return "auto"
+	case formatAlways:
+		return "always"
+	case formatNever:
+		return "never"
+	default:
+		return fmt.Sprintf("format(%d)", *f)
+	}
 }
 
 type mainCmd struct {
@@ -84,13 +159,24 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 	}
 
 	for _, file := range p.Files {
-		if err := cmd.processFile(p.Write, file); err != nil {
+		req := fileRequest{
+			Format:   p.shouldFormat(),
+			Write:    p.Write,
+			Filename: file,
+		}
+		if err := cmd.processFile(req); err != nil {
 			cmd.log.Printf("%s:%s", file, err)
 			exitCode = 1
 		}
 	}
 
 	return exitCode
+}
+
+type fileRequest struct {
+	Format   bool
+	Write    bool
+	Filename string
 }
 
 // processFile processes a single file.
@@ -101,14 +187,14 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 //
 // The collected information is used to pick a package name,
 // whether we need an import, etc. and *then* the edits are applied.
-func (cmd *mainCmd) processFile(write bool, filename string) error {
+func (cmd *mainCmd) processFile(r fileRequest) error {
 	fset := token.NewFileSet()
-	src, err := os.ReadFile(filename)
+	src, err := os.ReadFile(r.Filename)
 	if err != nil {
 		return err
 	}
 
-	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+	f, err := parser.ParseFile(fset, r.Filename, src, parser.ParseComments)
 	if err != nil {
 		return err
 	}
@@ -278,11 +364,19 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 	}
 	_, _ = out.Write(src[lastOffset:]) // flush remaining
 
-	if write {
-		return os.WriteFile(filename, out.Bytes(), 0o644)
+	outSrc := out.Bytes()
+	if r.Format {
+		outSrc, err = gofmt.Source(outSrc)
+		if err != nil {
+			return fmt.Errorf("format: %w", err)
+		}
 	}
 
-	_, err = cmd.Stdout.Write(out.Bytes())
+	if r.Write {
+		err = os.WriteFile(r.Filename, outSrc, 0o644)
+	} else {
+		_, err = cmd.Stdout.Write(outSrc)
+	}
 	return err
 }
 
