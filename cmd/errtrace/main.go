@@ -26,6 +26,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 func main() {
@@ -242,7 +243,11 @@ func (cmd *mainCmd) processFile(write bool, filename string) error {
 			}
 
 		case *insertWrapOpen:
-			fmt.Fprintf(out, "%s.Wrap(", errtracePkg)
+			fmt.Fprintf(out, "%s.Wrap", errtracePkg)
+			if it.N > 1 {
+				fmt.Fprintf(out, "%d", it.N)
+			}
+			_, _ = out.WriteString("(")
 
 		case *insertWrapClose:
 			_, _ = out.WriteString(")")
@@ -445,18 +450,38 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 		return nil
 	}
 
-	// Return with values.
-	// Wrap each nth return value in-place
-	// unless the return is a "return foo()" call
-	// beacuse we can't wrap that.
-	if len(n.Results) != t.numReturns {
-		t.logf(n.Pos(), "return statement has %d results, expected %d",
-			len(n.Results), t.numReturns)
-		return nil
+	// Return with multiple return values being automatically expanded
+	// E.g.,
+	//	func foo() (int, error) {
+	//		return bar()
+	//	}
+	// This needs to become:
+	//	func foo() (int, error) {
+	//		return Wrap2(bar())
+	//	}
+	// This is only supported if numReturns <= 6 and only the last return value is an error.
+	if len(n.Results) == 1 && t.numReturns > 1 {
+		if _, ok := n.Results[0].(*ast.CallExpr); !ok {
+			t.logf(n.Pos(), "skipping function with incorrect number of return values: got %d, want %d", len(n.Results), t.numReturns)
+			return t
+		}
+
+		switch {
+		case t.numReturns > 6:
+			t.logf(n.Pos(), "skipping function with too many return values")
+		case len(t.errorIndices) != 1:
+			t.logf(n.Pos(), "skipping function with multiple error returns")
+		case t.errorIndices[0] != t.numReturns-1:
+			t.logf(n.Pos(), "skipping function with non-final error return")
+		default:
+			t.wrapExpr(t.numReturns, n.Results[0])
+		}
+
+		return t
 	}
 
 	for _, idx := range t.errorIndices {
-		t.wrapExpr(n.Results[idx])
+		t.wrapExpr(1, n.Results[idx])
 	}
 
 	return t
@@ -515,14 +540,14 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 
 			// Assigning to a named error return value.
 			// Wrap the rhs in-place.
-			t.wrapExpr(assign.Rhs[i])
+			t.wrapExpr(1, assign.Rhs[i])
 		}
 
 		return true
 	})
 }
 
-func (t *walker) wrapExpr(expr ast.Expr) {
+func (t *walker) wrapExpr(n int, expr ast.Expr) {
 	switch {
 	case t.isErrtraceWrap(expr):
 		return // already wrapped
@@ -533,12 +558,12 @@ func (t *walker) wrapExpr(expr ast.Expr) {
 	}
 
 	*t.inserts = append(*t.inserts,
-		&insertWrapOpen{Before: expr.Pos()},
+		&insertWrapOpen{N: n, Before: expr.Pos()},
 		&insertWrapClose{After: expr.End()},
 	)
 }
 
-// Detects if an expression is in the form errtrace.Wrap(e).
+// Detects if an expression is in the form errtrace.Wrap(e) or errtrace.Wrap{n}(e).
 func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 	call, ok := expr.(*ast.CallExpr)
 	if !ok {
@@ -551,7 +576,11 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 		return false
 	}
 
-	return isIdent(sel.X, t.errtrace) && isIdent(sel.Sel, "Wrap")
+	if !isIdent(sel.X, t.errtrace) {
+		return false
+	}
+
+	return strings.HasPrefix(sel.Sel.Name, "Wrap")
 }
 
 // insert is a request to add something to the source code.
@@ -585,6 +614,10 @@ func (e *insertImportErrtrace) String() string {
 //
 // This needs a corresponding insertWrapClose to close the call.
 type insertWrapOpen struct {
+	// N specifies the number of parameters the Wrap function takes.
+	// Defaults to 1.
+	N int
+
 	Before token.Pos // position to insert before
 }
 

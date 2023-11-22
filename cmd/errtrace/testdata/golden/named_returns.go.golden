@@ -4,7 +4,10 @@ package foo
 
 import (
 	"errors"
-	"fmt"; "braces.dev/errtrace"
+	"fmt"
+	"os"
+
+	"go.uber.org/multierr"; "braces.dev/errtrace"
 )
 
 func NoError() (x int) {
@@ -69,4 +72,13 @@ func DeferWrapNamedWithItsOwnError() (_ int, err error) {
 	}()
 
 	return 0, errtrace.Wrap(UnderscoreNamed())
+}
+
+func DeferToAnotherFunction() (err error) {
+	f, err := os.Open("foo.txt")
+	if err != nil {
+		return errtrace.Wrap(err)
+	}
+	defer multierr.AppendInto(&err, multierr.Close(f))
+	return nil
 }

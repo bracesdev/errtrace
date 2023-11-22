@@ -2,7 +2,11 @@
 
 package foo
 
-import "strconv"
+import (
+	"io"
+	"os"
+	"strconv"
+)
 
 func Unwrapped(s string) (int, error) {
 	i, err := strconv.Atoi(s)
@@ -12,4 +16,21 @@ func Unwrapped(s string) (int, error) {
 	return i + 42, nil
 }
 
-// TODO: multiple return values without variables
+func Parse(s string) (int, error) {
+	return strconv.Atoi(s)
+}
+
+func DeferWithoutNamedReturns(s string) error {
+	f, err := os.Open(s)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bs, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
