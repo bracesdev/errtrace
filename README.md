@@ -154,10 +154,17 @@ similar to gofmt or goimports.
 errtrace is designed to have very low overhead
 on supported systems.
 
+Benchmark results for linux/amd64 on an Intel Core i5-13600 (best of 10):
+```
+BenchmarkFmtErrorf      11574928               103.5 ns/op            40 B/op          2 allocs/op
+# default build, uses unsafe
+BenchmarkWrap           78173496                14.70 ns/op           24 B/op          0 allocs/op
+# build with -tags safe
+BenchmarkWrap            5958579               198.5 ns/op            24 B/op          0 allocs/op
+```
+
 TODO:
-- vs errorf
 - vs stack trace
-- vs safe mode
 
 ## Safety
 
