@@ -1,5 +1,9 @@
 # errtrace
 
+<div align="center">
+  <img src="assets/logo.png" width="300" />
+</div>
+
 > **Warning**:
 > errtrace is extremely experimental.
 > Use it at your own risk.
