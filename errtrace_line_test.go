@@ -133,6 +133,27 @@ func TestWrap_Line(t *testing.T) {
 				return err
 			},
 		},
+
+		// Multi-errors.
+		{
+			name: "MutiError", // @group
+			f: func() error {
+				return errors.Join(
+					errtrace.New("foo"), // @trace
+					errtrace.New("bar"), // @trace
+				)
+			},
+		},
+		{
+			name: "MultiError/Wrapped", // @group
+			f: func() error {
+				err := errors.Join(
+					errtrace.New("foo"), // @trace
+					errtrace.New("bar"), // @trace
+				)
+				return errtrace.Wrap(err) // @trace
+			},
+		},
 	}
 
 	testMarkers, err := parseMarkers(errtraceLineTestFile)

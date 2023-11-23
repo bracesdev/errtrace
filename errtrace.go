@@ -6,10 +6,7 @@
 package errtrace
 
 import (
-	"errors"
-	"fmt"
 	"io"
-	"runtime"
 	"strings"
 )
 
@@ -26,32 +23,10 @@ func wrap(err error, callerPC uintptr) error {
 //
 // An error is returned if the writer returns an error.
 func Format(w io.Writer, target error) (err error) {
-	var tr *errTrace
-	for ; errors.As(target, &tr); target = tr.err {
-		frames := runtime.CallersFrames([]uintptr{tr.pc})
-
-		for {
-			f, more := frames.Next()
-			if f == (runtime.Frame{}) {
-				break
-			}
-
-			// Same format as tracebacks:
-			//
-			// functionName
-			// 	file:line
-			if _, err := fmt.Fprintf(w, "%s\n\t%s:%d\n", f.Function, f.File, f.Line); err != nil {
-				return err
-			}
-
-			if !more {
-				break
-			}
-		}
-	}
-	return err
+	return writeTree(w, buildTraceTree(target))
 }
 
+// FormatString writes the return trace for err to a string.
 func FormatString(target error) string {
 	var s strings.Builder
 	_ = Format(&s, target)
