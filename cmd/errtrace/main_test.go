@@ -310,6 +310,39 @@ func TestFormatAuto(t *testing.T) {
 			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
 		}
 	})
+
+	t.Run("stdin", func(t *testing.T) {
+		var out bytes.Buffer
+		exitCode := (&mainCmd{
+			Stdin:  strings.NewReader(give),
+			Stdout: &out,
+			Stderr: io.Discard,
+		}).Run(nil /* args */) // empty args implies stdin
+		if want := 0; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+		if want, got := wantUnformatted, out.String(); want != got {
+			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
+		}
+	})
+
+	t.Run("stdin incompatible with write", func(t *testing.T) {
+		var err, out bytes.Buffer
+		exitCode := (&mainCmd{
+			Stdin:  strings.NewReader("unused"),
+			Stdout: &out,
+			Stderr: &err,
+		}).Run([]string{"-w"})
+		if want := 1; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+		if want, got := "", out.String(); want != got {
+			t.Errorf("stdout = %q, want %q", got, want)
+		}
+		if want, got := "-:can't use -w with stdin\n", err.String(); want != got {
+			t.Errorf("stderr = %q, want %q", got, want)
+		}
+	})
 }
 
 func indent(s string) string {

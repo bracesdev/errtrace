@@ -15,7 +15,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -32,6 +31,7 @@ import (
 
 func main() {
 	cmd := &mainCmd{
+		Stdin:  os.Stdin,
 		Stderr: os.Stderr,
 		Stdout: os.Stdout,
 	}
@@ -77,8 +77,8 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 
 	p.Files = flag.Args()
 	if len(p.Files) == 0 {
-		flag.Usage()
-		return errors.New("no source files")
+		// Read file from stdin when there's no args, similar to gofmt.
+		p.Files = []string{"-"}
 	}
 
 	return nil
@@ -143,8 +143,9 @@ func (f *format) String() string {
 }
 
 type mainCmd struct {
-	Stderr io.Writer
+	Stdin  io.Reader
 	Stdout io.Writer
+	Stderr io.Writer
 
 	log *log.Logger
 }
@@ -189,7 +190,8 @@ type fileRequest struct {
 // whether we need an import, etc. and *then* the edits are applied.
 func (cmd *mainCmd) processFile(r fileRequest) error {
 	fset := token.NewFileSet()
-	src, err := os.ReadFile(r.Filename)
+
+	src, err := cmd.readFile(r)
 	if err != nil {
 		return err
 	}
@@ -378,6 +380,17 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		_, err = cmd.Stdout.Write(outSrc)
 	}
 	return err
+}
+
+func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
+	if r.Filename == "-" {
+		if r.Write {
+			return nil, fmt.Errorf("can't use -w with stdin")
+		}
+		return io.ReadAll(cmd.Stdin)
+	}
+
+	return os.ReadFile(r.Filename)
 }
 
 type walker struct {
