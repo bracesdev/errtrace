@@ -26,14 +26,29 @@ func wrap(err error, callerPC uintptr) error {
 //
 // An error is returned if the writer returns an error.
 func Format(w io.Writer, target error) (err error) {
-	// Same format as tracebacks:
-	//
-	// functionName
-	// 	file:line
-	Frames(target)(func(f Frame) bool {
-		_, err = fmt.Fprintf(w, "%s\n\t%s:%d\n", f.Func, f.File, f.Line)
-		return err == nil
-	})
+	var tr *errTrace
+	for ; errors.As(target, &tr); target = tr.err {
+		frames := runtime.CallersFrames([]uintptr{tr.pc})
+
+		for {
+			f, more := frames.Next()
+			if f == (runtime.Frame{}) {
+				break
+			}
+
+			// Same format as tracebacks:
+			//
+			// functionName
+			// 	file:line
+			if _, err := fmt.Fprintf(w, "%s\n\t%s:%d\n", f.Function, f.File, f.Line); err != nil {
+				return err
+			}
+
+			if !more {
+				break
+			}
+		}
+	}
 	return err
 }
 
@@ -41,42 +56,6 @@ func FormatString(target error) string {
 	var s strings.Builder
 	_ = Format(&s, target)
 	return s.String()
-}
-
-type Frame struct {
-	File string
-	Line int
-	Func string // fully qualified function name
-}
-
-func Frames(target error) func(yield func(Frame) bool) bool {
-	return func(yield func(Frame) bool) bool {
-		var tr *errTrace
-		for ; errors.As(target, &tr); target = tr.err {
-			frames := runtime.CallersFrames([]uintptr{tr.pc})
-
-			for {
-				f, more := frames.Next()
-				if f == (runtime.Frame{}) {
-					break
-				}
-
-				frame := Frame{
-					File: f.File,
-					Line: f.Line,
-					Func: f.Function,
-				}
-				if !yield(frame) {
-					return false
-				}
-
-				if !more {
-					break
-				}
-			}
-		}
-		return true
-	}
 }
 
 type errTrace struct {
