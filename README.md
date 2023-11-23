@@ -146,6 +146,9 @@ and you use Git, run the following on a Unix-like system:
 git ls-files '*.go' | xargs errtrace -w
 ```
 
+errtrace can be set be setup as a custom formatter in your editor,
+similar to gofmt or goimports.
+
 ## Performance
 
 errtrace is designed to have very low overhead
