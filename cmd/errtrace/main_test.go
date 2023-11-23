@@ -339,7 +339,7 @@ func TestFormatAuto(t *testing.T) {
 		if want, got := "", out.String(); want != got {
 			t.Errorf("stdout = %q, want %q", got, want)
 		}
-		if want, got := "-:can't use -write with stdin\n", err.String(); want != got {
+		if want, got := "-:can't use -w with stdin\n", err.String(); want != got {
 			t.Errorf("stderr = %q, want %q", got, want)
 		}
 	})

@@ -385,7 +385,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 	if r.Filename == "-" {
 		if r.Write {
-			return nil, fmt.Errorf("can't use -write with stdin")
+			return nil, fmt.Errorf("can't use -w with stdin")
 		}
 		return io.ReadAll(cmd.Stdin)
 	}
