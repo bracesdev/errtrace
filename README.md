@@ -22,6 +22,8 @@ for complex programs written in Go.
 
 ### Features
 
+- **Lightweight**:
+  errtrace brings no other runtime dependencies with it.
 - [**Simple**](#manual-instrumentation):
   The library API is simple, straightforward, and idiomatic.
 - [**Automatic**](#automatic-instrumentation):
