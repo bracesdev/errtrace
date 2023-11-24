@@ -99,6 +99,95 @@ func TestFormatTrace(t *testing.T) {
 	}
 }
 
+func TestFormatVerbs(t *testing.T) {
+	err := errors.New("error")
+	wrapped := errtrace.Wrap(err)
+
+	tests := []struct {
+		name string
+		fmt  string
+		want string
+	}{
+		{
+			name: "verb s",
+			fmt:  "%s",
+			want: "error",
+		},
+		{
+			name: "verb v",
+			fmt:  "%v",
+			want: "error",
+		},
+		{
+			name: "verb q",
+			fmt:  "%q",
+			want: `"error"`,
+		},
+		{
+			name: "padded string",
+			fmt:  "%10s",
+			want: "     error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if want, got := tt.want, fmt.Sprintf(tt.fmt, err); want != got {
+				t.Errorf("unwrapped: want %q, got %q", want, got)
+			}
+
+			if want, got := tt.want, fmt.Sprintf(tt.fmt, wrapped); want != got {
+				t.Errorf("wrapped: want %q, got %q", want, got)
+			}
+		})
+	}
+}
+
+func TestFormat(t *testing.T) {
+	e1 := errtrace.New("e1")
+	e2 := errtrace.Errorf("e2: %w", e1)
+	e3 := errtrace.Wrap(e2)
+
+	tests := []struct {
+		name       string
+		err        error
+		want       string
+		wantTraces int
+	}{
+		{
+			name:       "new error",
+			err:        e1,
+			want:       "e1",
+			wantTraces: 1,
+		},
+		{
+			name:       "wrapped with Errorf",
+			err:        e2,
+			want:       "e2: e1",
+			wantTraces: 2,
+		},
+		{
+			name:       "wrap after Errorf",
+			err:        e3,
+			want:       "e2: e1",
+			wantTraces: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if want, got := tt.want, fmt.Sprintf("%s", tt.err); want != got {
+				t.Errorf("message: want %q, got: %q", want, got)
+			}
+
+			withTrace := fmt.Sprintf("%+v", tt.err)
+			if want, got := tt.wantTraces, strings.Count(withTrace, "errtrace_test.TestFormat"); want != got {
+				t.Errorf("expected traces %v, got %v in:\n%s", want, got, withTrace)
+			}
+		})
+	}
+}
+
 func BenchmarkWrap(b *testing.B) {
 	err := errors.New("foo")
 	b.RunParallel(func(pb *testing.PB) {
