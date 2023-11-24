@@ -29,7 +29,7 @@ for complex programs written in Go.
 - [**Automatic**](#automatic-instrumentation):
   The errtrace CLI will automatically instrument your code.
 - [**Fast**](#performance):
-  On popular 64-bit systems, errtrace is (TODO NUMBER) faster
+  On popular 64-bit systems, errtrace is much faster
   than capturing a stack trace.
 
 ### Why
