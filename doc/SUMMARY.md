@@ -6,6 +6,8 @@
   - [Manual](instrument-manual.md)
   - [Automatic](instrument-auto.md)
 - [Performance](performance.md)
-- [Safety](safety.md)
+- Caveats
+  - [Error wrapping](err-wrap.md)
+  - [Safety](safety.md)
 - [Acknowledgements](credits.md)
 - [License](license.md)
