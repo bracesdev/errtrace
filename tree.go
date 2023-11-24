@@ -23,6 +23,10 @@ type traceFrame struct {
 type traceTree struct {
 	// Trace is the trace for the error down until
 	// the first multi-error was encountered.
+	//
+	// The trace is in the reverse order of the call stack.
+	// The first element is the deepest call in the stack,
+	// and the last element is the shallowest call in the stack.
 	Trace []traceFrame
 
 	// Children are the traces for each of the errors
@@ -39,6 +43,7 @@ type traceTree struct {
 // and they're all considered children of this error.
 func buildTraceTree(err error) traceTree {
 	var current traceTree
+loop:
 	for {
 		switch x := err.(type) {
 		case *errTrace:
@@ -77,13 +82,17 @@ func buildTraceTree(err error) traceTree {
 			for _, err := range errs {
 				current.Children = append(current.Children, buildTraceTree(err))
 			}
-			return current
+
+			break loop
 
 		default:
 			// Reached a terminal error.
-			return current
+			break loop
 		}
 	}
+
+	sliceReverse(current.Trace)
+	return current
 }
 
 func writeTree(w io.Writer, tree traceTree) error {
@@ -96,7 +105,7 @@ type treeWriter struct {
 }
 
 func (p *treeWriter) WriteTree(t traceTree) error {
-	p.writeTree(t, nil /* path */, nil /* counts */)
+	p.writeTree(t, nil /* path */)
 	return p.e
 }
 
@@ -110,20 +119,15 @@ func (p *treeWriter) err(err error) {
 //
 // path is a slice of indexes leading to the current node
 // in the tree.
-// counts is a slice of the number of children
-// in each layer leading to the current node.
-//
-// Invariant: len(path) == len(counts)
-func (p *treeWriter) writeTree(t traceTree, path, counts []int) {
-	p.writeTrace(t.Trace, path, counts)
-
-	counts = append(counts, len(t.Children))
+func (p *treeWriter) writeTree(t traceTree, path []int) {
 	for i, child := range t.Children {
-		p.writeTree(child, append(path, i), counts)
+		p.writeTree(child, append(path, i))
 	}
+
+	p.writeTrace(t.Trace, path)
 }
 
-func (p *treeWriter) writeTrace(trace []traceFrame, path, counts []int) {
+func (p *treeWriter) writeTrace(trace []traceFrame, path []int) {
 	// A trace for a single error takes
 	// the same form as a stack trace:
 	//
@@ -134,88 +138,71 @@ func (p *treeWriter) writeTrace(trace []traceFrame, path, counts []int) {
 	//
 	// However, when depth > 1, we're part of a tree,
 	// so we need to add prefixes containers around the trace
-	// to indicate the tree structure:
+	// to indicate the tree structure.
 	//
-	// func1
-	// 	path/to/file.go:12
-	// func2
-	// 	path/to/file.go:34
-	// |
-	// +- func3
-	//    	path/to/file.go:57
-	//    func4
-	//    	path/to/file.go:78
-	//    |
+	// We print in depth-first order, so we get:
+	//
 	//    +- func5
 	//    |  	path/to/file.go:90
 	//    |  func6
 	//    |  	path/to/file.go:12
 	//    |
 	//    +- func7
-	//       	path/to/file.go:34
-	//       func8
-	//       	path/to/file.go:56
+	//    |  	path/to/file.go:34
+	//    |  func8
+	//    |  	path/to/file.go:56
+	//    |
+	// +- func3
+	// |  	path/to/file.go:57
+	// |  func4
+	// |  	path/to/file.go:78
+	// |
+	// func1
+	// 	path/to/file.go:12
+	// func2
+	// 	path/to/file.go:34
 
-	// Connecting "|" lines when starting a new trace.
-	// This is the "empty" line between traces.
-	// This doesn't use p.pipes because it doesn't care
-	// whether we're the last element in the path,
-	// and it doesn't want to leave a trailing space on this line.
-	if len(path) > 0 {
-		for i := 0; i < len(path); i++ {
-			if i > 0 {
-				p.writeString("  ")
+	if len(trace) > 0 {
+		for i, frame := range trace {
+			if i == 0 {
+				p.pipes(path, "+- ")
+			} else {
+				p.pipes(path, "|  ")
 			}
-			p.writeString("|")
-		}
-		p.writeString("\n")
-	}
 
-	// This node doesn't have any trace information.
-	// It's likely a multi-error that wasn't wrapped with errtrace.
-	// Print something simple to mark its presence.
-	if len(trace) == 0 {
-		p.connectToParent(path, counts)
+			p.writeString(frame.Name)
+			p.writeString("\n")
+
+			p.pipes(path, "|  ")
+			p.printf("\t%s:%d\n", frame.File, frame.Line)
+		}
+	} else {
+		// This node doesn't have any trace information.
+		// It's likely a multi-error that wasn't wrapped with errtrace.
+		// Print something simple to mark its presence.
+		p.pipes(path, "+- ")
 		p.writeString("+\n")
-		return
 	}
 
-	for i, frame := range trace {
-		if i == 0 {
-			// First frame of the trace
-			// needs to connect to the "|" from above.
-			p.connectToParent(path, counts)
-		} else {
-			p.pipes(path, counts) // | |
-		}
-
-		p.writeString(frame.Name)
+	// Connecting "|" lines when ending a trace
+	// This is the "empty" line between traces.
+	if len(path) > 0 {
+		p.pipes(path, "|  ")
 		p.writeString("\n")
-
-		p.pipes(path, counts) // | |
-		p.printf("\t%s:%d\n", frame.File, frame.Line)
 	}
 }
 
-func (p *treeWriter) connectToParent(path, counts []int) {
-	if len(path) == 0 {
-		return
-	}
-
-	p.pipes(path[:len(path)-1], counts[:len(counts)-1])
-	p.writeString("+- ")
-}
-
-func (p *treeWriter) pipes(path, counts []int) {
-	// We don't draw pipe for last element in each layer.
-	// For example, if paths is [3, 5, 2],
-	// and counts is [5, 6, 4],
-	// then this node is the last element in the second layer,
-	// so we don't draw a pipe for it.
+func (p *treeWriter) pipes(path []int, last string) {
 	for depth, idx := range path {
-		if idx == counts[depth]-1 {
+		if depth < len(path)-1 && idx == 0 {
+			// Don't draw a pipe for the first element in each layer
+			// except the last layer.
 			//
+			// This omits extraneous "|" prefixes
+			// that don't have anything to connect to.
 			p.writeString("   ")
+		} else if depth == len(path)-1 {
+			p.writeString(last)
 		} else {
 			p.writeString("|  ")
 		}

@@ -2,11 +2,70 @@ package errtrace
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"braces.dev/errtrace/internal/diff"
 )
+
+func errorCaller() error {
+	return Wrap(errorCallee())
+}
+
+func errorCallee() error {
+	return New("test error")
+}
+
+func errorMultiCaller() error {
+	return errors.Join(
+		errorCaller(),
+		errorCaller(),
+	)
+}
+
+func TestBuildTreeSingle(t *testing.T) {
+	tree := buildTraceTree(errorCaller())
+	trace := tree.Trace
+
+	if want, got := 2, len(trace); want != got {
+		t.Fatalf("trace length mismatch, want %d, got %d", want, got)
+	}
+
+	if want, got := "braces.dev/errtrace.errorCallee", trace[0].Name; want != got {
+		t.Errorf("innermost function should be first, want %q, got %q", want, got)
+	}
+
+	if want, got := "braces.dev/errtrace.errorCaller", trace[1].Name; want != got {
+		t.Errorf("outermost function should be last, want %q, got %q", want, got)
+	}
+}
+
+func TestBuildTreeMulti(t *testing.T) {
+	tree := buildTraceTree(errorMultiCaller())
+
+	if want, got := 0, len(tree.Trace); want != got {
+		t.Fatalf("unexpected trace: %v", tree.Trace)
+	}
+
+	if want, got := 2, len(tree.Children); want != got {
+		t.Fatalf("children length mismatch, want %d, got %d", want, got)
+	}
+
+	for _, child := range tree.Children {
+		if want, got := 2, len(child.Trace); want != got {
+			t.Fatalf("trace length mismatch, want %d, got %d", want, got)
+		}
+
+		if want, got := "braces.dev/errtrace.errorCallee", child.Trace[0].Name; want != got {
+			t.Errorf("innermost function should be first, want %q, got %q", want, got)
+		}
+
+		if want, got := "braces.dev/errtrace.errorCaller", child.Trace[1].Name; want != got {
+			t.Errorf("outermost function should be last, want %q, got %q", want, got)
+		}
+	}
+}
 
 func TestWriteTree(t *testing.T) {
 	// Helpers to make tests more readable.
@@ -52,17 +111,17 @@ func TestWriteTree(t *testing.T) {
 				}),
 			),
 			want: []string{
-				"+",
-				"|",
 				"+- foo",
 				"|  	foo.go:42",
 				"|  bar",
 				"|  	bar.go:24",
-				"|",
+				"|  ",
 				"+- baz",
-				"   	baz.go:24",
-				"   qux",
-				"   	qux.go:48",
+				"|  	baz.go:24",
+				"|  qux",
+				"|  	qux.go:48",
+				"|  ",
+				"+",
 			},
 		},
 		{
@@ -80,15 +139,15 @@ func TestWriteTree(t *testing.T) {
 				),
 			),
 			want: []string{
+				"+- baz",
+				"|  	baz.go:24",
+				"|  qux",
+				"|  	qux.go:48",
+				"|  ",
 				"foo",
 				"	foo.go:42",
 				"bar",
 				"	bar.go:24",
-				"|",
-				"+- baz",
-				"   	baz.go:24",
-				"   qux",
-				"   	qux.go:48",
 			},
 		},
 		{
@@ -109,6 +168,12 @@ func TestWriteTree(t *testing.T) {
 							{"quuz", "quuz.go", 48},
 						},
 					),
+					tree(
+						frames{
+							{"abc", "abc.go", 24},
+							{"def", "def.go", 48},
+						},
+					),
 				),
 				tree(
 					frames{
@@ -118,25 +183,30 @@ func TestWriteTree(t *testing.T) {
 				),
 			),
 			want: []string{
-				"foo",
-				"	foo.go:42",
-				"bar",
-				"	bar.go:24",
-				"|",
+				"   +- quux",
+				"   |  	quux.go:24",
+				"   |  quuz",
+				"   |  	quuz.go:48",
+				"   |  ",
+				"   +- abc",
+				"   |  	abc.go:24",
+				"   |  def",
+				"   |  	def.go:48",
+				"   |  ",
 				"+- baz",
 				"|  	baz.go:24",
 				"|  qux",
 				"|  	qux.go:48",
-				"|  |",
-				"|  +- quux",
-				"|     	quux.go:24",
-				"|     quuz",
-				"|     	quuz.go:48",
-				"|",
+				"|  ",
 				"+- corge",
-				"   	corge.go:24",
-				"   grault",
-				"   	grault.go:48",
+				"|  	corge.go:24",
+				"|  grault",
+				"|  	grault.go:48",
+				"|  ",
+				"foo",
+				"	foo.go:42",
+				"bar",
+				"	bar.go:24",
 			},
 		},
 	}

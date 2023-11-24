@@ -6,6 +6,7 @@
 package errtrace
 
 import (
+	"fmt"
 	"io"
 	"strings"
 )
@@ -50,7 +51,7 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 	if verb == 'v' && s.Flag('+') {
 		io.WriteString(s, e.Error())
 		io.WriteString(s, "\n")
-		Format(s, e)
+		_ = Format(s, e)
 		return
 	}
 
