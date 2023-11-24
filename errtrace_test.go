@@ -181,6 +181,9 @@ func TestFormat(t *testing.T) {
 			}
 
 			withTrace := fmt.Sprintf("%+v", tt.err)
+			if !strings.HasPrefix(withTrace, tt.want) {
+				t.Errorf("expected error message %q in trace:\n%s", tt.want, withTrace)
+			}
 			if want, got := tt.wantTraces, strings.Count(withTrace, "errtrace_test.TestFormat"); want != got {
 				t.Errorf("expected traces %v, got %v in:\n%s", want, got, withTrace)
 			}
