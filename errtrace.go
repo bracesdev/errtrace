@@ -91,3 +91,14 @@ func (e *errTrace) Error() string {
 func (e *errTrace) Unwrap() error {
 	return e.err
 }
+
+func (e *errTrace) Format(s fmt.State, verb rune) {
+	if verb == 'v' && s.Flag('+') {
+		io.WriteString(s, e.Error())
+		io.WriteString(s, "\n")
+		Format(s, e)
+		return
+	}
+
+	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
+}
