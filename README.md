@@ -1,14 +1,24 @@
 # errtrace
 
+- [Introduction](#introduction)
+  - [Installation](#installation)
+- [Usage](#usage)
+  - [Manual](#manual-instrumentation)
+  - [Automatic](#automatic-instrumentation)
+- [Performance](#performance)
+- [Safety](#safety)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+
+## Introduction
+
 <div align="center">
-  <img src="assets/logo.png" width="300" />
+  <img src="doc/assets/logo.png" width="300"/>
 </div>
 
 > **Warning**:
 > errtrace is extremely experimental.
 > Use it at your own risk.
-
-## Introduction
 
 errtrace is an experimental package to trace an error's return path
 through a Go program.
@@ -50,7 +60,7 @@ the path the error took *out* to get to the user.
 
 This library is an experiment to evaluate that idea.
 
-## Installation
+### Installation
 
 Install errtrace with Go modules:
 
@@ -161,6 +171,7 @@ errtrace is designed to have very low overhead
 on supported systems.
 
 Benchmark results for linux/amd64 on an Intel Core i5-13600 (best of 10):
+
 ```
 BenchmarkFmtErrorf      11574928               103.5 ns/op            40 B/op          2 allocs/op
 # default build, uses Go assembly.

@@ -1,4 +1,4 @@
-module braces.dev/errtrace/assets
+module braces.dev/errtrace/doc/assets
 
 go 1.21.4
 
