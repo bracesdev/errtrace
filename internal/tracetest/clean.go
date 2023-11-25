@@ -1,3 +1,5 @@
+// Package tracetest provides utilities for errtrace
+// to test error trace output conveniently.
 package tracetest
 
 import (
@@ -10,35 +12,41 @@ import (
 	"strings"
 )
 
+const _fixedDir = "/path/to/errtrace"
+
+// _fileLineMatcher matches file:line where file starts with the fixedDir.
+// Capture groups:
+//
+//  1. file path
+//  2. line number
+var _fileLineMatcher = regexp.MustCompile("(" + regexp.QuoteMeta(_fixedDir) + `[^:]+):(\d+)`)
+
 // MustClean makes traces more deterministic for tests by:
-// 1. Replacing the environment-specific path to errtrace with a fixed string.
-// 2. Replacing line numbers with the lowest values that maintain relative ordering within the file.
+//
+//   - replacing the environment-specific path to errtrace
+//     with the fixed path /path/to/errtrace
+//   - replacing line numbers with the lowest values
+//     that maintain relative ordering within the file
+//
+// Note that lines numbers are replaced with increasing values starting at 1,
+// with earlier positions in the file getting lower numbers.
+// The relative ordering of lines within a file is maintained.
 func MustClean(trace string) string {
-	const fixedDir = "/path/to/errtrace"
-	errtraceDir := getErrtraceDir()
-	trace = strings.ReplaceAll(trace, errtraceDir, fixedDir)
+	// Get deterministic file paths first.
+	trace = strings.ReplaceAll(trace, getErrtraceDir(), _fixedDir)
 
-	// Match file:line where file starts with the fixedDir.
-	fileLineMatcher := regexp.MustCompile("(" + regexp.QuoteMeta(fixedDir) + "[^:]+):([0-9]+)")
-
-	replacer := newFileLineReplacer()
-	for _, m := range fileLineMatcher.FindAllStringSubmatch(trace, -1) {
+	replacer := make(fileLineReplacer)
+	for _, m := range _fileLineMatcher.FindAllStringSubmatch(trace, -1) {
 		file := m[1]
 		lineStr := m[2]
 		line, err := strconv.Atoi(lineStr)
 		if err != nil {
-			panic(fmt.Sprintf("file:line regex matched invalid line number: %v", err))
+			panic(fmt.Sprintf("matched bad line number in %q: %v", m[0], err))
 		}
-
-		replacer.add(file, line)
+		replacer.Add(file, line)
 	}
 
-	replacements := replacer.replacements()
-	trace = fileLineMatcher.ReplaceAllStringFunc(trace, func(s string) string {
-		return replacements[s]
-	})
-
-	return trace
+	return strings.NewReplacer(replacer.Replacements()...).Replace(trace)
 }
 
 func getErrtraceDir() string {
@@ -47,46 +55,54 @@ func getErrtraceDir() string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
 }
 
-type fileLineReplacer struct {
-	fileLines map[string][]int
+// fileLineReplacer maintains a mapping from
+// file name to line numbers in that file that are referenced.
+// This is used to generate the replacements to be applied to the trace.
+type fileLineReplacer map[string][]int
+
+// Add adds a file:line pair to the replacer.
+func (r fileLineReplacer) Add(file string, line int) {
+	r[file] = append(r[file], line)
 }
 
-func newFileLineReplacer() *fileLineReplacer {
-	return &fileLineReplacer{
-		fileLines: make(map[string][]int),
-	}
-}
+// Replacements generates a slice of pairs of Replacements
+// to be applied to the trace.
+//
+// The first element in each pair is the original file:line
+// and the second element is the replacement file:line.
+// This returned slice can be fed into strings.NewReplacer.
+func (r fileLineReplacer) Replacements() []string {
+	var allReplacements []string
+	for file, fileLines := range r {
+		// Sort the lines in the file, and remove duplicates.
+		// The result will be a slice of unique line numbers.
+		// The index of each line in this slice + 1 will be its new line number.
+		sort.Ints(fileLines)
+		fileLines = uniq(fileLines)
 
-func (r *fileLineReplacer) add(file string, line int) {
-	r.fileLines[file] = append(r.fileLines[file], line)
-}
-
-func (r *fileLineReplacer) replacements() map[string]string {
-	allReplacements := make(map[string]string)
-	for file := range r.fileLines {
-		replacements := lineReplacements(r.fileLines[file])
-		for origLine, replaceLine := range replacements {
-			allReplacements[fmt.Sprintf("%v:%v", file, origLine)] = fmt.Sprintf("%v:%v", file, replaceLine)
+		for idx, origLine := range fileLines {
+			replaceLine := idx + 1
+			allReplacements = append(allReplacements,
+				fmt.Sprintf("%v:%v", file, origLine),
+				fmt.Sprintf("%v:%v", file, replaceLine))
 		}
 	}
 	return allReplacements
 }
 
-func lineReplacements(v []int) map[int]int {
-	if len(v) == 0 {
-		return nil
+// uniq removes contiguous duplicates from v.
+// The slice storage is re-used so the original slice
+// should not be used after calling this function.
+func uniq[T comparable](items []T) []T {
+	if len(items) == 0 {
+		return items
 	}
-	sort.Ints(v)
 
-	replacements := make(map[int]int)
-	last := -1 // not a valid line number (neither is 0, but -1 is defensive)
-	next := 1
-	for _, v := range v {
-		if v != last {
-			replacements[v] = next
-			next += 1
+	newItems := items[:1]
+	for _, item := range items[1:] {
+		if item != newItems[len(newItems)-1] {
+			newItems = append(newItems, item)
 		}
-		last = v
 	}
-	return replacements
+	return newItems
 }

@@ -61,7 +61,6 @@ func Example_tree() {
 	//
 	// braces.dev/errtrace_test.Example_tree
 	// 	/path/to/errtrace/example_tree_test.go:2
-
 }
 
 func trimTrailingSpaces(s string) string {

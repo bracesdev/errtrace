@@ -12,6 +12,7 @@ RACE=$(if $(NO_RACE),,-race)
 test:
 	go test $(RACE) -v ./...
 	go test $(RACE) -tags safe -v ./...
+	go test -gcflags='-l -N' ./... # disable optimizations/inlining
 
 .PHONY: bench
 bench:
