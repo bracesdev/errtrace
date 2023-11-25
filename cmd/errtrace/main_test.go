@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"braces.dev/errtrace/internal/diff"
 )
 
 // TestGolden runs errtrace on all .go files inside testdata/golden,
@@ -86,7 +88,7 @@ func testGolden(t *testing.T, file string) {
 	}
 
 	if want, got := string(wantSrc), string(gotSrc); got != want {
-		t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diffLines(want, got)))
+		t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff.Lines(want, got)))
 	}
 
 	// Check that the log messages match.
@@ -95,7 +97,7 @@ func testGolden(t *testing.T, file string) {
 		t.Fatal(err)
 	}
 
-	if diff := diff(wantLogs, gotLogs); diff != "" {
+	if diff := diff.Diff(wantLogs, gotLogs); diff != "" {
 		t.Errorf("log messages differ:\n%s", indent(diff))
 	}
 
@@ -114,7 +116,7 @@ func testGolden(t *testing.T, file string) {
 
 		gotSrc := got.String()
 		if want, got := string(wantSrc), gotSrc; got != want {
-			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diffLines(want, got)))
+			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff.Lines(want, got)))
 		}
 	})
 }
@@ -287,7 +289,7 @@ func TestFormatAuto(t *testing.T) {
 		}
 
 		if want, got := wantFormatted, string(bs); got != want {
-			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
+			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diff.Lines(want, got)))
 		}
 	})
 
@@ -307,7 +309,7 @@ func TestFormatAuto(t *testing.T) {
 		}
 
 		if want, got := wantUnformatted, out.String(); got != want {
-			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
+			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diff.Lines(want, got)))
 		}
 	})
 
@@ -322,7 +324,7 @@ func TestFormatAuto(t *testing.T) {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
 		}
 		if want, got := wantUnformatted, out.String(); want != got {
-			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diffLines(want, got)))
+			t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diff.Lines(want, got)))
 		}
 	})
 
@@ -347,60 +349,6 @@ func TestFormatAuto(t *testing.T) {
 
 func indent(s string) string {
 	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
-}
-
-func diffLines(want, got string) string {
-	return diff(strings.Split(want, "\n"), strings.Split(got, "\n"))
-}
-
-// diff is a very simple diff implementation
-// that does a line-by-line comparison of two strings.
-func diff[T comparable](want, got []T) string {
-	// We want to pad diff output with line number in the format:
-	//
-	//   - 1 | line 1
-	//   + 2 | line 2
-	//
-	// To do that, we need to know the longest line number.
-	longest := max(len(want), len(got))
-	lineFormat := fmt.Sprintf("%%s %%-%dd | %%v\n", len(strconv.Itoa(longest))) // e.g. "%-2d | %s%v\n"
-	const (
-		minus = "-"
-		plus  = "+"
-		equal = " "
-	)
-
-	var buf strings.Builder
-	writeLine := func(idx int, kind string, v T) {
-		fmt.Fprintf(&buf, lineFormat, kind, idx+1, v)
-	}
-
-	var lastEqs []T
-	for i := 0; i < len(want) || i < len(got); i++ {
-		if i < len(want) && i < len(got) && want[i] == got[i] {
-			lastEqs = append(lastEqs, want[i])
-			continue
-		}
-
-		// If there are any equal lines before this, show up to 3 of them.
-		if len(lastEqs) > 0 {
-			start := max(len(lastEqs)-3, 0)
-			for j, eq := range lastEqs[start:] {
-				writeLine(i-3+j, equal, eq)
-			}
-		}
-
-		if i < len(want) {
-			writeLine(i, minus, want[i])
-		}
-		if i < len(got) {
-			writeLine(i, plus, got[i])
-		}
-
-		lastEqs = nil
-	}
-
-	return buf.String()
 }
 
 type logLine struct {

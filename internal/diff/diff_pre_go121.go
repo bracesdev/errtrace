@@ -1,6 +1,6 @@
-//go:build go1.20 && !go1.21
+//go:build !go1.21
 
-package main
+package diff
 
 func max(a, b int) int {
 	if a > b {

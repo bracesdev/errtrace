@@ -6,10 +6,8 @@
 package errtrace
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"strings"
 )
 
@@ -26,57 +24,14 @@ func wrap(err error, callerPC uintptr) error {
 //
 // An error is returned if the writer returns an error.
 func Format(w io.Writer, target error) (err error) {
-	// Same format as tracebacks:
-	//
-	// functionName
-	// 	file:line
-	Frames(target)(func(f Frame) bool {
-		_, err = fmt.Fprintf(w, "%s\n\t%s:%d\n", f.Func, f.File, f.Line)
-		return err == nil
-	})
-	return err
+	return writeTree(w, buildTraceTree(target))
 }
 
+// FormatString writes the return trace for err to a string.
 func FormatString(target error) string {
 	var s strings.Builder
 	_ = Format(&s, target)
 	return s.String()
-}
-
-type Frame struct {
-	File string
-	Line int
-	Func string // fully qualified function name
-}
-
-func Frames(target error) func(yield func(Frame) bool) bool {
-	return func(yield func(Frame) bool) bool {
-		var tr *errTrace
-		for ; errors.As(target, &tr); target = tr.err {
-			frames := runtime.CallersFrames([]uintptr{tr.pc})
-
-			for {
-				f, more := frames.Next()
-				if f == (runtime.Frame{}) {
-					break
-				}
-
-				frame := Frame{
-					File: f.File,
-					Line: f.Line,
-					Func: f.Function,
-				}
-				if !yield(frame) {
-					return false
-				}
-
-				if !more {
-					break
-				}
-			}
-		}
-		return true
-	}
 }
 
 type errTrace struct {
@@ -94,9 +49,7 @@ func (e *errTrace) Unwrap() error {
 
 func (e *errTrace) Format(s fmt.State, verb rune) {
 	if verb == 'v' && s.Flag('+') {
-		io.WriteString(s, e.Error())
-		io.WriteString(s, "\n")
-		Format(s, e)
+		_ = Format(s, e)
 		return
 	}
 
