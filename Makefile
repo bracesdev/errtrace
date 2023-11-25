@@ -8,6 +8,8 @@ export PATH := $(GOBIN):$(PATH)
 # only use -race if NO_RACE is unset.
 RACE=$(if $(NO_RACE),,-race)
 
+GOLANGCI_LINT_ARGS ?=
+
 .PHONY: test
 test:
 	go test $(RACE) -v ./...
@@ -29,3 +31,16 @@ README.md: $(wildcard doc/*.md)
 	fi; \
 	echo "Generating $@"; \
 	stitchmd -o $@ doc/SUMMARY.md
+
+.PHONY: lint
+lint: golangci-lint
+
+.PHONY: golangci-lint
+golangci-lint:
+	@if ! command -v golangci-lint >/dev/null; then \
+		echo "golangci-lint not found. Installing..."; \
+		mkdir -p $(GOBIN); \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN); \
+	fi; \
+	echo "Running golangci-lint"; \
+	golangci-lint run $(GOLANGCI_LINT_ARGS) ./...
