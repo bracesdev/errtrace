@@ -27,9 +27,13 @@ var _fileLineMatcher = regexp.MustCompile("(" + regexp.QuoteMeta(_fixedDir) + `[
 //     with the fixed path /path/to/errtrace
 //   - replacing line numbers with the lowest values
 //     that maintain relative ordering within the file
+//
+// Note that lines numbers are replaced with increasing values starting at 1,
+// with earlier positions in the file getting lower numbers.
+// The relative ordering of lines within a file is maintained.
 func MustClean(trace string) string {
-	errtraceDir := getErrtraceDir()
-	trace = strings.ReplaceAll(trace, errtraceDir, _fixedDir)
+	// Get deterministic file paths first.
+	trace = strings.ReplaceAll(trace, getErrtraceDir(), _fixedDir)
 
 	replacer := newFileLineReplacer()
 	for _, m := range _fileLineMatcher.FindAllStringSubmatch(trace, -1) {
@@ -42,12 +46,7 @@ func MustClean(trace string) string {
 		replacer.add(file, line)
 	}
 
-	replacements := replacer.replacements()
-	trace = _fileLineMatcher.ReplaceAllStringFunc(trace, func(s string) string {
-		return replacements[s]
-	})
-
-	return trace
+	return strings.NewReplacer(replacer.replacements()...).Replace(trace)
 }
 
 func getErrtraceDir() string {
@@ -57,7 +56,7 @@ func getErrtraceDir() string {
 }
 
 type fileLineReplacer struct {
-	fileLines map[string][]int
+	fileLines map[string][]int // file name => line numbers in it that are referenced
 }
 
 func newFileLineReplacer() *fileLineReplacer {
@@ -70,32 +69,46 @@ func (r *fileLineReplacer) add(file string, line int) {
 	r.fileLines[file] = append(r.fileLines[file], line)
 }
 
-func (r *fileLineReplacer) replacements() map[string]string {
-	allReplacements := make(map[string]string)
+// replacements generates a slice of pairs of replacements
+// to be applied to the trace.
+//
+// The first element in each pair is the original file:line
+// and the second element is the replacement file:line.
+// This returned slice can be fed into strings.NewReplacer.
+func (r *fileLineReplacer) replacements() []string {
+	var allReplacements []string
 	for file := range r.fileLines {
-		replacements := lineReplacements(r.fileLines[file])
-		for origLine, replaceLine := range replacements {
-			allReplacements[fmt.Sprintf("%v:%v", file, origLine)] = fmt.Sprintf("%v:%v", file, replaceLine)
+		fileLines := r.fileLines[file]
+
+		// Sort the lines in the file, and remove duplicates.
+		// The result will be a slice of unique line numbers.
+		// The index of each line in this slice + 1 will be its new line number.
+		sort.Ints(fileLines)
+		fileLines = uniq(fileLines)
+
+		for idx, origLine := range fileLines {
+			replaceLine := idx + 1
+			allReplacements = append(allReplacements,
+				fmt.Sprintf("%v:%v", file, origLine),
+				fmt.Sprintf("%v:%v", file, replaceLine))
 		}
 	}
 	return allReplacements
 }
 
-func lineReplacements(v []int) map[int]int {
-	if len(v) == 0 {
-		return nil
+// uniq removes contiguous duplicates from v.
+// The slice storage is re-used so the original slice
+// should not be used after calling this function.
+func uniq[T comparable](items []T) []T {
+	if len(items) == 0 {
+		return items
 	}
-	sort.Ints(v)
 
-	replacements := make(map[int]int)
-	last := -1 // not a valid line number (neither is 0, but -1 is defensive)
-	next := 1
-	for _, v := range v {
-		if v != last {
-			replacements[v] = next
-			next += 1
+	newItems := items[:1]
+	for _, item := range items[1:] {
+		if item != newItems[len(newItems)-1] {
+			newItems = append(newItems, item)
 		}
-		last = v
 	}
-	return replacements
+	return newItems
 }
