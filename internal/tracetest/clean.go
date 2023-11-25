@@ -12,16 +12,6 @@ import (
 	"strings"
 )
 
-// MustClean cleans the trace, panicking if it cannot.
-// See [Clean] for details.
-func MustClean(trace string) string {
-	cleaned, err := Clean(trace)
-	if err != nil {
-		panic(err)
-	}
-	return cleaned
-}
-
 const _fixedDir = "/path/to/errtrace"
 
 // _fileLineMatcher matches file:line where file starts with the fixedDir.
@@ -31,13 +21,13 @@ const _fixedDir = "/path/to/errtrace"
 //  2. line number
 var _fileLineMatcher = regexp.MustCompile("(" + regexp.QuoteMeta(_fixedDir) + `[^:]+):(\d+)`)
 
-// Clean makes traces more deterministic for tests by:
+// MustClean makes traces more deterministic for tests by:
 //
 //   - replacing the environment-specific path to errtrace
 //     with the fixed path /path/to/errtrace
 //   - replacing line numbers with the lowest values
 //     that maintain relative ordering within the file
-func Clean(trace string) (string, error) {
+func MustClean(trace string) string {
 	errtraceDir := getErrtraceDir()
 	trace = strings.ReplaceAll(trace, errtraceDir, _fixedDir)
 
@@ -47,9 +37,8 @@ func Clean(trace string) (string, error) {
 		lineStr := m[2]
 		line, err := strconv.Atoi(lineStr)
 		if err != nil {
-			panic(fmt.Sprintf("file:line regex matched invalid line number: %v", err))
+			panic(fmt.Sprintf("matched bad line number in %q: %v", m[0], err))
 		}
-
 		replacer.add(file, line)
 	}
 
@@ -58,7 +47,7 @@ func Clean(trace string) (string, error) {
 		return replacements[s]
 	})
 
-	return trace, nil
+	return trace
 }
 
 func getErrtraceDir() string {
