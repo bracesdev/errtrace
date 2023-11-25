@@ -49,8 +49,6 @@ func (e *errTrace) Unwrap() error {
 
 func (e *errTrace) Format(s fmt.State, verb rune) {
 	if verb == 'v' && s.Flag('+') {
-		io.WriteString(s, e.Error())
-		io.WriteString(s, "\n")
 		_ = Format(s, e)
 		return
 	}

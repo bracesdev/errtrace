@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"strings"
 )
 
 // traceFrame is a single frame in a stack trace.
@@ -21,6 +22,9 @@ type traceFrame struct {
 // Children, if any, are the traces for each of the errors
 // inside the multi-error (if the error was a multi-error).
 type traceTree struct {
+	// Err is the error at the root of this tree.
+	Err error
+
 	// Trace is the trace for the error down until
 	// the first multi-error was encountered.
 	//
@@ -42,7 +46,7 @@ type traceTree struct {
 // a separate trace is built from each of its errors
 // and they're all considered children of this error.
 func buildTraceTree(err error) traceTree {
-	var current traceTree
+	current := traceTree{Err: err}
 loop:
 	for {
 		switch x := err.(type) {
@@ -124,64 +128,82 @@ func (p *treeWriter) writeTree(t traceTree, path []int) {
 		p.writeTree(child, append(path, i))
 	}
 
-	p.writeTrace(t.Trace, path)
+	p.writeTrace(t.Err, t.Trace, path)
 }
 
-func (p *treeWriter) writeTrace(trace []traceFrame, path []int) {
+func (p *treeWriter) writeTrace(err error, trace []traceFrame, path []int) {
 	// A trace for a single error takes
 	// the same form as a stack trace:
+	//
+	// error message
 	//
 	// func1
 	// 	path/to/file.go:12
 	// func2
 	// 	path/to/file.go:34
 	//
-	// However, when depth > 1, we're part of a tree,
+	// However, when path isn't empty, we're part of a tree,
 	// so we need to add prefixes containers around the trace
 	// to indicate the tree structure.
 	//
 	// We print in depth-first order, so we get:
 	//
-	//    +- func5
+	//    +- error message 1
+	//    |
+	//    |  func5
 	//    |  	path/to/file.go:90
 	//    |  func6
 	//    |  	path/to/file.go:12
 	//    |
-	//    +- func7
+	//    +- error message 2
+	//    |
+	//    |  func7
 	//    |  	path/to/file.go:34
 	//    |  func8
 	//    |  	path/to/file.go:56
 	//    |
-	// +- func3
+	// +- error message 3
+	// |
+	// |  func3
 	// |  	path/to/file.go:57
 	// |  func4
 	// |  	path/to/file.go:78
 	// |
+	// error message 4
+	//
 	// func1
 	// 	path/to/file.go:12
 	// func2
 	// 	path/to/file.go:34
 
-	if len(trace) > 0 {
-		for i, frame := range trace {
-			if i == 0 {
-				p.pipes(path, "+- ")
-			} else {
-				p.pipes(path, "|  ")
-			}
+	//   +- error message
+	//   |
+	//
+	// The message may have newlines in it,
+	// so we need to print each line separately.
+	for i, line := range strings.Split(err.Error(), "\n") {
+		if i == 0 {
+			p.pipes(path, "+- ")
+		} else {
+			p.pipes(path, "|  ")
+		}
+		p.writeString(line)
+		p.writeString("\n")
+	}
 
+	if len(trace) > 0 {
+		// Empty line between the message and the trace.
+		p.pipes(path, "|  ")
+		p.writeString("\n")
+
+		for _, frame := range trace {
+			p.pipes(path, "|  ")
 			p.writeString(frame.Name)
 			p.writeString("\n")
 
 			p.pipes(path, "|  ")
 			p.printf("\t%s:%d\n", frame.File, frame.Line)
 		}
-	} else {
-		// This node doesn't have any trace information.
-		// It's likely a multi-error that wasn't wrapped with errtrace.
-		// Print something simple to mark its presence.
-		p.pipes(path, "+- ")
-		p.writeString("+\n")
 	}
 
 	// Connecting "|" lines when ending a trace

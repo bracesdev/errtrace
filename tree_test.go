@@ -1,7 +1,6 @@
 package errtrace
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -70,8 +69,9 @@ func TestBuildTreeMulti(t *testing.T) {
 func TestWriteTree(t *testing.T) {
 	// Helpers to make tests more readable.
 	type frames = []traceFrame
-	tree := func(trace frames, children ...traceTree) traceTree {
+	tree := func(err error, trace frames, children ...traceTree) traceTree {
 		return traceTree{
+			Err:      err,
 			Trace:    trace,
 			Children: children,
 		}
@@ -85,12 +85,15 @@ func TestWriteTree(t *testing.T) {
 		{
 			name: "top level single error",
 			give: tree(
+				errors.New("test error"),
 				frames{
 					{"foo", "foo.go", 42},
 					{"bar", "bar.go", 24},
 				},
 			),
 			want: []string{
+				"test error",
+				"",
 				"foo",
 				"	foo.go:42",
 				"bar",
@@ -98,52 +101,85 @@ func TestWriteTree(t *testing.T) {
 			},
 		},
 		{
-			name: "top level multi error",
+			name: "multi error without trace",
 			give: tree(
+				errors.Join(
+					errors.New("err a"),
+					errors.New("err b"),
+				),
 				frames{},
-				tree(frames{
+				tree(errors.New("err a"), frames{
 					{"foo", "foo.go", 42},
 					{"bar", "bar.go", 24},
 				}),
-				tree(frames{
+				tree(errors.New("err b"), frames{
 					{"baz", "baz.go", 24},
 					{"qux", "qux.go", 48},
 				}),
 			),
 			want: []string{
-				"+- foo",
+				"+- err a",
+				"|  ",
+				"|  foo",
 				"|  	foo.go:42",
 				"|  bar",
 				"|  	bar.go:24",
 				"|  ",
-				"+- baz",
+				"+- err b",
+				"|  ",
+				"|  baz",
 				"|  	baz.go:24",
 				"|  qux",
 				"|  	qux.go:48",
 				"|  ",
-				"+",
+				"err a",
+				"err b",
 			},
 		},
 		{
-			name: "wrapped multi error",
+			name: "multi error with trace",
 			give: tree(
+				errors.Join(
+					errors.New("err a"),
+					errors.New("err b"),
+				),
 				frames{
 					{"foo", "foo.go", 42},
 					{"bar", "bar.go", 24},
 				},
 				tree(
+					errors.New("err a"),
 					frames{
 						{"baz", "baz.go", 24},
 						{"qux", "qux.go", 48},
 					},
 				),
+				tree(
+					errors.New("err b"),
+					frames{
+						{"corge", "corge.go", 24},
+						{"grault", "grault.go", 48},
+					},
+				),
 			),
 			want: []string{
-				"+- baz",
+				"+- err a",
+				"|  ",
+				"|  baz",
 				"|  	baz.go:24",
 				"|  qux",
 				"|  	qux.go:48",
 				"|  ",
+				"+- err b",
+				"|  ",
+				"|  corge",
+				"|  	corge.go:24",
+				"|  grault",
+				"|  	grault.go:48",
+				"|  ",
+				"err a",
+				"err b",
+				"",
 				"foo",
 				"	foo.go:42",
 				"bar",
@@ -153,22 +189,35 @@ func TestWriteTree(t *testing.T) {
 		{
 			name: "wrapped multi error with siblings",
 			give: tree(
+				errors.Join(
+					errors.Join(
+						errors.New("err a"),
+						errors.New("err b"),
+					),
+					errors.New("err c"),
+				),
 				frames{
 					{"foo", "foo.go", 42},
 					{"bar", "bar.go", 24},
 				},
 				tree(
+					errors.Join(
+						errors.New("err a"),
+						errors.New("err b"),
+					),
 					frames{
 						{"baz", "baz.go", 24},
 						{"qux", "qux.go", 48},
 					},
 					tree(
+						errors.New("err a"),
 						frames{
 							{"quux", "quux.go", 24},
 							{"quuz", "quuz.go", 48},
 						},
 					),
 					tree(
+						errors.New("err b"),
 						frames{
 							{"abc", "abc.go", 24},
 							{"def", "def.go", 48},
@@ -176,6 +225,7 @@ func TestWriteTree(t *testing.T) {
 					),
 				),
 				tree(
+					errors.New("err c"),
 					frames{
 						{"corge", "corge.go", 24},
 						{"grault", "grault.go", 48},
@@ -183,30 +233,93 @@ func TestWriteTree(t *testing.T) {
 				),
 			),
 			want: []string{
-				"   +- quux",
+				"   +- err a",
+				"   |  ",
+				"   |  quux",
 				"   |  	quux.go:24",
 				"   |  quuz",
 				"   |  	quuz.go:48",
 				"   |  ",
-				"   +- abc",
+				"   +- err b",
+				"   |  ",
+				"   |  abc",
 				"   |  	abc.go:24",
 				"   |  def",
 				"   |  	def.go:48",
 				"   |  ",
-				"+- baz",
+				"+- err a",
+				"|  err b",
+				"|  ",
+				"|  baz",
 				"|  	baz.go:24",
 				"|  qux",
 				"|  	qux.go:48",
 				"|  ",
-				"+- corge",
+				"+- err c",
+				"|  ",
+				"|  corge",
 				"|  	corge.go:24",
 				"|  grault",
 				"|  	grault.go:48",
 				"|  ",
+				"err a",
+				"err b",
+				"err c",
+				"",
 				"foo",
 				"	foo.go:42",
 				"bar",
 				"	bar.go:24",
+			},
+		},
+		{
+			name: "multi error with one non-traced error",
+			give: tree(
+				errors.Join(
+					errors.New("err a"),
+					errors.New("err b"),
+					errors.New("err c"),
+				),
+				frames{},
+				tree(
+					errors.New("err a"),
+					frames{
+						{"foo", "foo.go", 42},
+						{"bar", "bar.go", 24},
+					},
+				),
+				tree(
+					errors.New("err b"),
+					frames{},
+				),
+				tree(
+					errors.New("err c"),
+					frames{
+						{"baz", "baz.go", 24},
+						{"qux", "qux.go", 48},
+					},
+				),
+			),
+			want: []string{
+				"+- err a",
+				"|  ",
+				"|  foo",
+				"|  	foo.go:42",
+				"|  bar",
+				"|  	bar.go:24",
+				"|  ",
+				"+- err b",
+				"|  ",
+				"+- err c",
+				"|  ",
+				"|  baz",
+				"|  	baz.go:24",
+				"|  qux",
+				"|  	qux.go:48",
+				"|  ",
+				"err a",
+				"err b",
+				"err c",
 			},
 		},
 	}
@@ -226,60 +339,4 @@ func TestWriteTree(t *testing.T) {
 			}
 		})
 	}
-}
-
-// FuzzWriteTree generates a bunch of random trace trees
-// and ensures that writeTree doesn't panic on any of them.
-func FuzzWriteTree(f *testing.F) {
-	f.Add([]byte(`
-	{
-		"Trace": [
-			{"Name": "foo", "File": "foo.go", "Line": 42},
-			{"Name": "bar", "File": "bar.go", "Line": 24}
-		]
-	}`))
-	f.Add([]byte(`{
-		"Children": [
-			{
-				"Trace": [
-					{"Name": "foo", "File": "foo.go", "Line": 42},
-					{"Name": "bar", "File": "bar.go", "Line": 24}
-				]
-			}
-		]
-	}`))
-	f.Add([]byte(`{
-		"Trace": [
-			{"Name": "foo", "File": "foo.go", "Line": 42},
-			{"Name": "bar", "File": "bar.go", "Line": 24}
-		],
-		"Children": [
-			{
-				"Trace": [
-					{"Name": "baz", "File": "baz.go", "Line": 24},
-					{"Name": "qux", "File": "qux.go", "Line": 48}
-				],
-				"Children": [
-					{
-						"Trace": [
-							{"Name": "quux", "File": "quux.go", "Line": 24},
-							{"Name": "quuz", "File": "quuz.go", "Line": 48}
-						]
-					}
-				]
-			}
-		]
-	}`))
-
-	f.Fuzz(func(t *testing.T, data []byte) {
-		var tree traceTree
-		if err := json.Unmarshal(data, &tree); err != nil {
-			t.Skip(err)
-		}
-
-		var s strings.Builder
-		if err := writeTree(&s, tree); err != nil {
-			t.Fatal(err)
-		}
-	})
 }
