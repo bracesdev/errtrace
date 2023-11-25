@@ -214,17 +214,54 @@ func (p *treeWriter) writeTrace(err error, trace []traceFrame, path []int) {
 	}
 }
 
+// pipes draws the "| | |" pipes prefix.
+//
+// path is a slice of indexes leading to the current node.
+// For example, the path [1, 3, 2] says that the current node is
+// the 2nd child of the 3rd child of the 1st child of the root.
+//
+// last is the last "|" component in this grouping;
+// it'll normally be "|  " or "+- ".
+//
+// In combination, path and last tell us how to draw the pipes.
+// More often than not, we just draw:
+//
+//	|  |  |
+//
+// However, for the first line of a message,
+// we need to connect to the following line so we use "+- "
+// which gives us:
+//
+//	|  |  +- msg
+//	|  |  |
+//
+// Lastly, when drawing the tree,
+// if any of the intermediate positions in the path are 0,
+// (i.e. the first child of a parent),
+// we don't draw a pipe because it won't have
+// anything above it to connect to.
+// For example:
+//
+//	0  1  2          For some x > 0
+//	-------
+//	|     +- msg     path = [x, 0, 0]
+//	|     |
+//	|     +- msg     path = [x, 0, 1]
+//	|     |
+//	|  +- msg        path = [x, 0]
+//	|  |
+//	|  +- msg        path = [x, 1]
+//
+// Note that for cases where path[1] == 0,
+// we don't draw a pipe if len(path) > 2.
 func (p *treeWriter) pipes(path []int, last string) {
 	for depth, idx := range path {
-		if depth < len(path)-1 && idx == 0 {
-			// Don't draw a pipe for the first element in each layer
-			// except the last layer.
-			//
-			// This omits extraneous "|" prefixes
-			// that don't have anything to connect to.
-			p.writeString("   ")
-		} else if depth == len(path)-1 {
+		if depth == len(path)-1 {
 			p.writeString(last)
+		} else if idx == 0 {
+			// First child of the parent at this layer.
+			// Nothing to connect to above us.
+			p.writeString("   ")
 		} else {
 			p.writeString("|  ")
 		}
