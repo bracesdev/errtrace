@@ -1,4 +1,4 @@
-name: Test
+name: CI
 
 on:
   push:
@@ -10,7 +10,9 @@ permissions:
   contents: read
 
 jobs:
+
   test:
+    name: Test / Go ${{ matrix.go-version }} / ${{ matrix.arch }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -25,7 +27,6 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go-version }}
-        cache: true
 
     # GH runners use amd64 which also support 386.
     # For other architectures, use qemu.
@@ -39,3 +40,29 @@ jobs:
         GOARCH: ${{ matrix.arch }}
         # Only amd64/arm64 support RACE, disable it on all other architectures.
         NO_RACE: ${{ (matrix.arch == 'amd64' || matrix.arch == 'arm64') && '' || '1' }}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      name: Check out repository
+
+    - uses: actions/setup-go@v4
+      name: Set up Go
+      with:
+        # Use the Go version specified in the go.mod for linting.
+        go-version-file: go.mod
+        cache: false  # managed by golangci-lint
+
+    - uses: golangci/golangci-lint-action@v3
+      name: Install golangci-lint
+      with:
+        version: latest
+        args: --version  # make lint will run the linter
+
+    - name: Lint
+      run: make lint GOLANGCI_LINT_ARGS=--out-format=github-actions
+      # Write in a GitHub Actions-friendly format
+      # to annotate lines in the PR.
