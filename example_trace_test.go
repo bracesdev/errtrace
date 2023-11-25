@@ -27,10 +27,12 @@ func Example_trace() {
 	fmt.Println(tracetest.MustClean(got))
 
 	// Output:
-	//braces.dev/errtrace_test.f1
-	//	/path/to/errtrace/example_trace_test.go:1
-	//braces.dev/errtrace_test.f2
-	//	/path/to/errtrace/example_trace_test.go:2
+	//failed
+	//
 	//braces.dev/errtrace_test.f3
 	//	/path/to/errtrace/example_trace_test.go:3
+	//braces.dev/errtrace_test.f2
+	//	/path/to/errtrace/example_trace_test.go:2
+	//braces.dev/errtrace_test.f1
+	//	/path/to/errtrace/example_trace_test.go:1
 }
