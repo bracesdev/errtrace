@@ -712,9 +712,8 @@ func (e *insertImportErrtrace) Pos() token.Pos {
 func (e *insertImportErrtrace) String() string {
 	if e.AddKeyword {
 		return "add import statement"
-	} else {
-		return "add import"
 	}
+	return "add import"
 }
 
 // insertWrapOpen adds a errtrace.Wrap call before an expression.
