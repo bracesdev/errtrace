@@ -35,7 +35,7 @@ func MustClean(trace string) string {
 	// Get deterministic file paths first.
 	trace = strings.ReplaceAll(trace, getErrtraceDir(), _fixedDir)
 
-	replacer := newFileLineReplacer()
+	replacer := make(fileLineReplacer)
 	for _, m := range _fileLineMatcher.FindAllStringSubmatch(trace, -1) {
 		file := m[1]
 		lineStr := m[2]
@@ -43,10 +43,10 @@ func MustClean(trace string) string {
 		if err != nil {
 			panic(fmt.Sprintf("matched bad line number in %q: %v", m[0], err))
 		}
-		replacer.add(file, line)
+		replacer.Add(file, line)
 	}
 
-	return strings.NewReplacer(replacer.replacements()...).Replace(trace)
+	return strings.NewReplacer(replacer.Replacements()...).Replace(trace)
 }
 
 func getErrtraceDir() string {
@@ -55,31 +55,25 @@ func getErrtraceDir() string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
 }
 
-type fileLineReplacer struct {
-	fileLines map[string][]int // file name => line numbers in it that are referenced
+// fileLineReplacer maintains a mapping from
+// file name to line numbers in that file that are referenced.
+// This is used to generate the replacements to be applied to the trace.
+type fileLineReplacer map[string][]int
+
+// Add adds a file:line pair to the replacer.
+func (r fileLineReplacer) Add(file string, line int) {
+	r[file] = append(r[file], line)
 }
 
-func newFileLineReplacer() *fileLineReplacer {
-	return &fileLineReplacer{
-		fileLines: make(map[string][]int),
-	}
-}
-
-func (r *fileLineReplacer) add(file string, line int) {
-	r.fileLines[file] = append(r.fileLines[file], line)
-}
-
-// replacements generates a slice of pairs of replacements
+// Replacements generates a slice of pairs of Replacements
 // to be applied to the trace.
 //
 // The first element in each pair is the original file:line
 // and the second element is the replacement file:line.
 // This returned slice can be fed into strings.NewReplacer.
-func (r *fileLineReplacer) replacements() []string {
+func (r fileLineReplacer) Replacements() []string {
 	var allReplacements []string
-	for file := range r.fileLines {
-		fileLines := r.fileLines[file]
-
+	for file, fileLines := range r {
 		// Sort the lines in the file, and remove duplicates.
 		// The result will be a slice of unique line numbers.
 		// The index of each line in this slice + 1 will be its new line number.
