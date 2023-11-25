@@ -31,7 +31,7 @@ jobs:
       uses: abhinav/stitchmd-action@v1
       with:
         mode: ${{ github.event_name == 'pull_request_target' && 'write' || 'check' }}
-        summary: doc/README.md
+        summary: doc/SUMMARY.md
         output: README.md
 
     - uses: stefanzweifel/git-auto-commit-action@v5
