@@ -1,3 +1,5 @@
+// Package tracetest provides utilities for errtrace
+// to test error trace output conveniently.
 package tracetest
 
 import (
@@ -10,19 +12,37 @@ import (
 	"strings"
 )
 
-// MustClean makes traces more deterministic for tests by:
-// 1. Replacing the environment-specific path to errtrace with a fixed string.
-// 2. Replacing line numbers with the lowest values that maintain relative ordering within the file.
+// MustClean cleans the trace, panicking if it cannot.
+// See [Clean] for details.
 func MustClean(trace string) string {
-	const fixedDir = "/path/to/errtrace"
-	errtraceDir := getErrtraceDir()
-	trace = strings.ReplaceAll(trace, errtraceDir, fixedDir)
+	cleaned, err := Clean(trace)
+	if err != nil {
+		panic(err)
+	}
+	return cleaned
+}
 
-	// Match file:line where file starts with the fixedDir.
-	fileLineMatcher := regexp.MustCompile("(" + regexp.QuoteMeta(fixedDir) + "[^:]+):([0-9]+)")
+const _fixedDir = "/path/to/errtrace"
+
+// _fileLineMatcher matches file:line where file starts with the fixedDir.
+// Capture groups:
+//
+//  1. file path
+//  2. line number
+var _fileLineMatcher = regexp.MustCompile("(" + regexp.QuoteMeta(_fixedDir) + `[^:]+):(\d+)`)
+
+// Clean makes traces more deterministic for tests by:
+//
+//   - replacing the environment-specific path to errtrace
+//     with the fixed path /path/to/errtrace
+//   - replacing line numbers with the lowest values
+//     that maintain relative ordering within the file
+func Clean(trace string) (string, error) {
+	errtraceDir := getErrtraceDir()
+	trace = strings.ReplaceAll(trace, errtraceDir, _fixedDir)
 
 	replacer := newFileLineReplacer()
-	for _, m := range fileLineMatcher.FindAllStringSubmatch(trace, -1) {
+	for _, m := range _fileLineMatcher.FindAllStringSubmatch(trace, -1) {
 		file := m[1]
 		lineStr := m[2]
 		line, err := strconv.Atoi(lineStr)
@@ -34,11 +54,11 @@ func MustClean(trace string) string {
 	}
 
 	replacements := replacer.replacements()
-	trace = fileLineMatcher.ReplaceAllStringFunc(trace, func(s string) string {
+	trace = _fileLineMatcher.ReplaceAllStringFunc(trace, func(s string) string {
 		return replacements[s]
 	})
 
-	return trace
+	return trace, nil
 }
 
 func getErrtraceDir() string {
