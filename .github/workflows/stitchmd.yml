@@ -1,0 +1,41 @@
+# This workflow makes sure that the README.md is up-to-date
+# based on the contents of doc/SUMMARY.md.
+#
+# On main, it only verifies that the files are up to date.
+# For PRs, it pushes a new commit, updating the file if it's not.
+name: Stitch README.md
+
+on:
+  push:
+    branches: [main]
+
+  # Change the event to pull_request_target
+  # so that it runs in the context of the base repository.
+  pull_request_target:
+
+jobs:
+  stitchmd:
+    name: ${{ github.event_name == 'pull_request_target' && 'Update' || 'Check' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.pull_request.head.repo.full_name }}
+        ref: ${{ github.head_ref }}
+
+    - name: Check or update README
+      uses: abhinav/stitchmd-action@v1
+      with:
+        mode: ${{ github.event_name == 'pull_request_target' && 'write' || 'check' }}
+        summary: doc/README.md
+        output: README.md
+
+    - uses: stefanzweifel/git-auto-commit-action@v5
+      if: ${{ github.event_name == 'pull_request_target' }}
+      with:
+        file_pattern: README.md
+        commit_message: 'Update README.md'
