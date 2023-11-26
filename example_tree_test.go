@@ -9,26 +9,26 @@ import (
 	"braces.dev/errtrace/internal/tracetest"
 )
 
-func normalErr() error {
-	return errors.New("std err")
+func normalErr(i int) error {
+	return fmt.Errorf("std err %v", i)
 }
 
-func wrapNormalErr() error {
-	return errtrace.Wrap(normalErr())
+func wrapNormalErr(i int) error {
+	return errtrace.Wrap(normalErr(i))
 }
 
-func nestedErrorList() error {
+func nestedErrorList(i int) error {
 	return errors.Join(
-		normalErr(),
-		wrapNormalErr(),
+		normalErr(i),
+		wrapNormalErr(i+1),
 	)
 }
 
 func Example_tree() {
 	errs := errtrace.Wrap(errors.Join(
-		normalErr(),
-		wrapNormalErr(),
-		nestedErrorList(),
+		normalErr(1),
+		wrapNormalErr(2),
+		nestedErrorList(3),
 	))
 	got := errtrace.FormatString(errs)
 
@@ -37,27 +37,27 @@ func Example_tree() {
 	fmt.Println(trimTrailingSpaces(tracetest.MustClean(got)))
 
 	// Output:
-	// +- std err
+	// +- std err 1
 	// |
-	// +- std err
+	// +- std err 2
 	// |
 	// |  braces.dev/errtrace_test.wrapNormalErr
 	// |  	/path/to/errtrace/example_tree_test.go:1
 	// |
-	// |  +- std err
+	// |  +- std err 3
 	// |  |
-	// |  +- std err
+	// |  +- std err 4
 	// |  |
 	// |  |  braces.dev/errtrace_test.wrapNormalErr
 	// |  |  	/path/to/errtrace/example_tree_test.go:1
 	// |  |
-	// +- std err
-	// |  std err
+	// +- std err 3
+	// |  std err 4
 	// |
-	// std err
-	// std err
-	// std err
-	// std err
+	// std err 1
+	// std err 2
+	// std err 3
+	// std err 4
 	//
 	// braces.dev/errtrace_test.Example_tree
 	// 	/path/to/errtrace/example_tree_test.go:2
