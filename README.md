@@ -157,11 +157,11 @@ First, [install the tool](#installation), and then run it with one or more Go fi
 errtrace -w path/to/file.go path/to/another/file.go
 ```
 
-If you'd like to run it on all Go files in your project,
+If you'd like to run it on all non-test Go files in your project,
 and you use Git, run the following on a Unix-like system:
 
 ```bash
-git ls-files '*.go' | xargs errtrace -w
+git ls-files -- '*.go' ':!:*_test.go' | xargs errtrace -w
 ```
 
 errtrace can be set be setup as a custom formatter in your editor,
