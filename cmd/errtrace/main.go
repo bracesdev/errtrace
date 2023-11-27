@@ -459,6 +459,15 @@ func (t *walker) Visit(n ast.Node) ast.Visitor {
 }
 
 func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
+	// Clear state in case we're recursing into a function literal
+	// inside a function that returns an error.
+	newT := *t
+	newT.errorObjs = nil
+	newT.errorIdents = nil
+	newT.errorIndices = nil
+	newT.numReturns = 0
+	t = &newT
+
 	// If the function does not return anything,
 	// we still need to recurse into any function literals.
 	// Just return this visitor to continue recursing.
@@ -520,8 +529,6 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 		}
 	}
 
-	// Shallow copy with new state.
-	newT := *t
 	newT.errorObjs = setOf(objs)
 	newT.errorIdents = idents
 	newT.errorIndices = indices

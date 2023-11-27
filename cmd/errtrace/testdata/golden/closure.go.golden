@@ -1,0 +1,99 @@
+//go:build ignore
+
+package foo
+
+import (
+	"errors"
+	"fmt"; "braces.dev/errtrace"
+)
+
+func ClosureReturnsError() error {
+	return errtrace.Wrap(func() error {
+		return errtrace.Wrap(errors.New("great sadness"))
+	}())
+}
+
+func ClosureDoesNotReturnError() error {
+	x := func() int {
+		return 42
+	}()
+	return nil
+}
+
+func DeferedClosureReturnsError() error {
+	defer func() error {
+		// The error is ignored,
+		// but it should still be wrapped.
+		return errtrace.Wrap(errors.New("great sadness"))
+	}()
+
+	return nil
+}
+
+func DeferedClosureDoesNotReturnError() error {
+	defer func() int {
+		return 42
+	}()
+
+	return nil
+}
+
+func ClosureReturningErrorHasDifferentNumberOfReturns() (int, error) {
+	x := func() error {
+		return errtrace.Wrap(errors.New("great sadness"))
+	}
+
+	return 42, errtrace.Wrap(x())
+}
+
+func ClosureNotReturningErrorHasDifferentNumberOfReturns() (int, error) {
+	x := func() int {
+		return 42
+	}
+
+	return 42, nil
+}
+
+func ClosureInsideAnotherClosure() error {
+	return errtrace.Wrap(func() error {
+		return errtrace.Wrap(func() error {
+			return errtrace.Wrap(errors.New("great sadness"))
+		}())
+	}())
+}
+
+func ClosureNotReturningErrorInsideAnotherClosure() (int, error) {
+	var x int
+	err := func() error {
+		x := func() int {
+			return 42
+		}()
+		return errtrace.Wrap(errors.New("great sadness"))
+	}()
+
+	return x, errtrace.Wrap(err)
+}
+
+func ClosureReturningAnErrorInsideADefer() error {
+	defer func() {
+		err := func() error {
+			return errtrace.Wrap(errors.New("great sadness"))
+		}()
+
+		fmt.Println(err)
+	}()
+
+	return nil
+}
+
+func ClosureNotReturningAnErrorInsideADefer() error {
+	defer func() error {
+		x := func() int {
+			return 42
+		}()
+
+		return errtrace.Wrap(fmt.Errorf("great sadness: %d", x))
+	}()
+
+	return nil
+}
