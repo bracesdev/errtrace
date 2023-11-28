@@ -1,13 +1,22 @@
 // errtrace instruments Go code with error return tracing.
 //
+// # Installation
+//
+// Install errtrace with:
+//
+//	go install braces.dev/errtrace/cmd/errtrace@latest
+//
 // # Usage
 //
 //	errtrace [options] <source files>
 //
 // This will transform the source files and write them to the standard output.
-// Use the following options to control the output:
+// Use the following flags to control the output:
 //
-//   - -w: write result to the given source files instead of stdout
+//	-format
+//	      whether to format ouput; one of: [auto, always, never].
+//	      auto is the default and will format if the output is being written to a file.
+//	-w    write result to the given source files instead of stdout.
 package main
 
 // TODO
@@ -66,7 +75,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	}
 
 	flag.Var(&p.Format, "format", "whether to format ouput; one of: [auto, always, never].\n"+
-		"auto will format if the output is being written to a file.")
+		"auto is the default and will format if the output is being written to a file.")
 	flag.BoolVar(&p.Write, "w", false,
 		"write result to the given source files instead of stdout.")
 	// TODO: toolexec mode
