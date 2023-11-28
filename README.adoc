@@ -138,25 +138,6 @@ because the functions are mutually recursive.
 ====
 
 .Example 2
-[%collapsible]
-====
-....
-Start failed, rolling back: context deadline exceeded
-
-go.uber.org/fx_test.TestAppStart.func5.1.3
-        /path/to/project/app_test.go:1560
-go.uber.org/fx/internal/lifecycle.(*Lifecycle).runStartHook
-        /path/to/project/internal/lifecycle/lifecycle.go:258
-go.uber.org/fx/internal/lifecycle.(*Lifecycle).Start
-        /path/to/project/internal/lifecycle/lifecycle.go:219
-go.uber.org/fx.(*App).start.func1
-        /path/to/project/app.go:682
-....
-
-In this trace, we instrumented even the test code.
-====
-
-.Example 3
 [%collapsible%open]
 ====
 Realistic comparison of a
