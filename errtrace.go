@@ -1,8 +1,41 @@
-// Package errtrace provides the ability to track a Return Trace for errors.
+// Package errtrace provides the ability to track a return trace for errors.
 // This differs from a stack trace in that
 // it is not a snapshot of the call stack at the time of the error,
 // but rather a trace of the path taken by the error as it was returned
 // until it was finally handled.
+//
+// # Wrapping errors
+//
+// Use the [Wrap] function at a return site
+// to annotate it with the position of the return.
+//
+//	// Before
+//	if err != nil {
+//		return err
+//	}
+//
+//	// After
+//	if err != nil {
+//		return errtrace.Wrap(err)
+//	}
+//
+// # Formatting return traces
+//
+// errtrace provides the [Format] and [FormatString] functions
+// to obtain the return trace of an error.
+//
+//	errtrace.Format(os.Stderr, err)
+//
+// See [Format] for details of the output format.
+//
+// Additionally, errors returned by errtrace will also print a trace
+// if formatted with the %+v verb when used with a Printf-style function.
+//
+//	log.Printf("error: %+v", err)
+//
+// # See also
+//
+// https://github.com/bracesdev/errtrace.
 package errtrace
 
 import (
@@ -20,14 +53,29 @@ func wrap(err error, callerPC uintptr) error {
 	return et
 }
 
-// Format writes the return trace for err to the writer.
+// Format writes the return trace for given error to the writer.
+// The output takes a fromat similar to the following:
 //
-// An error is returned if the writer returns an error.
+//	<error message>
+//
+//	<function>
+//		<file>:<line>
+//	<caller of function>
+//		<file>:<line>
+//	[...]
+//
+// If the error doesn't have a return trace attached to it,
+// only the error message is reported.
+// If the error is comprised of multiple errors (e.g. with [errors.Join]),
+// the return trace of each error is reported as a tree.
+//
+// Returns an error if the writer fails.
 func Format(w io.Writer, target error) (err error) {
 	return writeTree(w, buildTraceTree(target))
 }
 
 // FormatString writes the return trace for err to a string.
+// See [Format] for details of the output format.
 func FormatString(target error) string {
 	var s strings.Builder
 	_ = Format(&s, target)
