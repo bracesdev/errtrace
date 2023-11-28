@@ -185,10 +185,10 @@ net/http.(*Transport).dialConnFor
 runtime.goexit
 	/goroot/src/runtime/asm_amd64.s:1650
 ....
-|===
 
-The stack contains details of how the HTTP client creates a connection
-rather than the method that triggered the HTTP request.
+| errtrace reports the method that triggered the HTTP request
+| stacktrace shows details of how the HTTP client creates a connection
+|===
 
 === Why is this useful?
 
