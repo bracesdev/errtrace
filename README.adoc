@@ -15,14 +15,15 @@ image:https://pkg.go.dev/badge/braces.dev/errtrace.svg["Go Reference", link="htt
 errtrace is extremely experimental.
 Use it at your own risk.
 
-errtrace is an experimental package to trace an error's return path
-through a Go program.
+errtrace is an experimental package to trace an error's return path --
+the return trace -- through a Go program.
 
 Where a stack trace tracks the code path that led to an error,
-errtrace tracks the code path that the error took to get to the user.
+a return trace tracks the code path that the error took to get to the user.
 Often these are the same path, but in Go they can diverge,
 since errors are values that can be transported across goroutines
 (e.g. with channels).
+When that happens, a return trace can be more useful than a stack trace.
 
 This library is inspired by
 https://ziglang.org/documentation/0.11.0/#Error-Return-Traces[Zig's error return traces].
