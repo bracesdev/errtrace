@@ -16,8 +16,9 @@ through a Go program.
 
 Where a stack trace tracks the code path that led to an error,
 errtrace tracks the code path that the error took to get to the user.
-Often these are the same path, but in Go they can diverge.
-In such cases, a return trace can be more useful than a stack trace.
+Often these are the same path, but in Go they can diverge,
+since errors are values that can be transported across goroutines
+(e.g. with channels).
 
 This library is inspired by
 https://ziglang.org/documentation/0.11.0/#Error-Return-Traces[Zig's error return traces].
@@ -377,7 +378,9 @@ go build -tags safe
 
 errtrace's unsafe operations are currently implemented
 for `GOARCH=amd64` and `GOARCH=arm64` only.
-Contributions to support other architectures are welcome.
+Other systems are supported but they will use safe mode, which is slower.
+
+Contributions to support unsafe mode for other architectures are welcome.
 
 == Contributing
 
