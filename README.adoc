@@ -152,6 +152,43 @@ go.uber.org/fx.(*App).start.func1
 In this trace, we instrumented even the test code.
 ====
 
+Example 3: Real-world comparison of a
+stacktrace vs an error return trace
+for a custom dial error from the HTTP client,
+which happens on a background goroutine.
+
+[cols="1,1"]
+|===
+| errtrace | stack
+a| 
+....
+Error fetching packages: Get [...]: connect rate limited
+
+braces.dev/errtrace_test.rateLimitDialer
+	/path/to/errtrace/example_http_test.go:72
+braces.dev/errtrace_test.(*PackageStore).updateIndex
+	/path/to/errtrace/example_http_test.go:59
+braces.dev/errtrace_test.(*PackageStore).Get
+	/path/to/errtrace/example_http_test.go:49
+....
+a| 
+....
+Error fetching packages: connect rate limited
+braces.dev/errtrace/benchext.rateLimitDialer
+	/path/to/errtrace/benchext/pkgerrors_example_http_test.go:81
+net/http.(*Transport).dial
+	/goroot/src/net/http/transport.go:1190
+net/http.(*Transport).dialConn
+	/goroot/src/net/http/transport.go:1625
+net/http.(*Transport).dialConnFor
+	/goroot/src/net/http/transport.go:1467
+runtime.goexit
+	/goroot/src/runtime/asm_amd64.s:1650
+|===
+
+The stack contains details of how the HTTP client creates a connection
+rather than the method that triggered the HTTP request.
+
 === Why is this useful?
 
 In Go, https://go.dev/blog/errors-are-values[errors are values].
