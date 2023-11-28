@@ -160,7 +160,7 @@ which happens on a background goroutine.
 [cols="1,1"]
 |===
 | errtrace | stack
-a| 
+a|
 ....
 Error fetching packages: Get [...]: connect rate limited
 
@@ -171,7 +171,7 @@ braces.dev/errtrace_test.(*PackageStore).updateIndex
 braces.dev/errtrace_test.(*PackageStore).Get
 	/path/to/errtrace/example_http_test.go:49
 ....
-a| 
+a|
 ....
 Error fetching packages: connect rate limited
 braces.dev/errtrace/benchext.rateLimitDialer
