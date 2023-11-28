@@ -159,7 +159,7 @@ which happens on a background goroutine.
 
 [cols="1,1"]
 |===
-| errtrace | stack
+| errtrace | stacktrace
 a|
 ....
 Error fetching packages: Get [...]: connect rate limited
