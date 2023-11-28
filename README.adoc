@@ -48,7 +48,7 @@ go install braces.dev/errtrace/cmd/errtrace@latest
 +
 [source,bash]
 ----
-git ls-files -- '*.go' ':!:*_test.go' | xargs errtrace -w
+git ls-files -- '*.go' | xargs errtrace -w
 ----
 . Let `go mod tidy` install the errtrace Go module for you.
 +
@@ -272,12 +272,12 @@ Then, run it on your code:
 errtrace -w path/to/file.go path/to/another/file.go
 ----
 
-To run it on all non-test Go files in your project,
+To run it on all Go files in your project,
 if you use Git, run the following command on a Unix-like system:
 
 [source,bash]
 ----
-git ls-files -- '*.go' ':!:*_test.go' | xargs errtrace -w
+git ls-files -- '*.go' | xargs errtrace -w
 ----
 
 errtrace can be set be setup as a custom formatter in your editor,
