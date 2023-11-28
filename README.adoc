@@ -5,6 +5,10 @@
 
 image::assets/logo.png[errtrace logo,300,align="center"]
 
+// FYI: ":" makes the images inline. "::" above makes it a block.
+image:https://github.com/bracesdev/errtrace/actions/workflows/ci.yml/badge.svg["CI status", link="https://github.com/bracesdev/errtrace/actions/workflows/ci.yml"]
+image:https://pkg.go.dev/badge/braces.dev/errtrace.svg["Go Reference", link="https://pkg.go.dev/braces.dev/errtrace"]
+
 == Introduction
 
 [WARNING]
