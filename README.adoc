@@ -184,6 +184,7 @@ net/http.(*Transport).dialConnFor
 	/goroot/src/net/http/transport.go:1467
 runtime.goexit
 	/goroot/src/runtime/asm_amd64.s:1650
+....
 |===
 
 The stack contains details of how the HTTP client creates a connection
