@@ -152,8 +152,11 @@ go.uber.org/fx.(*App).start.func1
 In this trace, we instrumented even the test code.
 ====
 
-Example 3: Real-world comparison of a
-stacktrace vs an error return trace
+.Example 3
+[%collapsible%open]
+====
+Realistic comparison of a
+stacktrace versus an error return trace
 for a custom dial error from the HTTP client,
 which happens on a background goroutine.
 
@@ -189,6 +192,7 @@ runtime.goexit
 | errtrace reports the method that triggered the HTTP request
 | stacktrace shows details of how the HTTP client creates a connection
 |===
+====
 
 === Why is this useful?
 
