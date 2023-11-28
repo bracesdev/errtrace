@@ -2,6 +2,7 @@
 :toc: preamble
 :idprefix:
 :idseparator: -
+:tabsize: 4
 
 image::assets/logo.png[errtrace logo,300,align="center"]
 
