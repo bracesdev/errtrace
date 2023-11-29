@@ -28,10 +28,7 @@
 
 ## Introduction
 
-errtrace is extremely experimental.
-Use it at your own risk.
-
-errtrace is an experimental package to trace an error’s return path --
+errtrace is an **experimental** package to trace an error's return path --
 the return trace -- through a Go program.
 
 Where a stack trace tracks the code path that led to an error,
