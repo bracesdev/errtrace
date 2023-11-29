@@ -1,14 +1,30 @@
 # errtrace
 
-<center>
+<div align="center">
 
 ![errtrace logo](assets/logo.png)
 
-</center>
+</div>
 
 !["CI status"](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml/badge.svg)
 !["Go Reference"](https://pkg.go.dev/badge/braces.dev/errtrace.svg)
 !["Code Coverage"](https://codecov.io/gh/bracesdev/errtrace/graph/badge.svg?token=KDY04XEEJ9)
+
+- [Introduction](#introduction)
+  - [Features](#features)
+  - [Try it out](#try-it-out)
+  - [Why is this useful](#why-is-this-useful)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Manual instrumentation](#manual-instrumentation)
+  - [Automatic instrumentation](#automatic-instrumentation)
+- [Performance](#performance)
+- [Caveats](#caveats)
+  - [Error wrapping](#error-wrapping)
+  - [Safety](#safety)
+- [Contributing](#contributing)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
 ## Introduction
 
