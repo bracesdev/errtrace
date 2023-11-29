@@ -1,10 +1,6 @@
 # errtrace
 
-<div align="center">
-
 ![errtrace logo](assets/logo.png)
-
-</div>
 
 [![CI](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml/badge.svg)](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/braces.dev/errtrace.svg)](https://pkg.go.dev/braces.dev/errtrace)
