@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 ### Added
-- Add -l flag to cmd/errtrace.
-  This prints files that would be changed without changing them.
+- cmd/errtrace: Add -l flag to print files that would be changed
+  without changing them.
+- cmd/errtrace: Support opt-out for specific lines
+  with a `//errtrace:skip` comment.
 
 ## v0.1.1 - 2023-11-28
 ### Changed

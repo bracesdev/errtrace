@@ -318,6 +318,34 @@ git ls-files -- '*.go' | xargs errtrace -w
 errtrace can be set be setup as a custom formatter in your editor,
 similar to gofmt or goimports.
 
+#### Opting-out during automatic instrumentation
+
+If you're relying on automatic instrumentation
+and want to ignore specific lines from being instrumented,
+you can add a comment in one of the following forms
+on relevant lines:
+
+```go
+//errtrace:skip
+//errtrace:skip explanation
+```
+
+This can be especially useful if the returned error
+has to match another error exactly because the caller still uses `==`.
+
+For example, if you're implementing `io.Reader`,
+you need to return `io.EOF` when you reach the end of the input.
+Wrapping it will cause functions like `io.ReadAll` to misbehave.
+
+```go
+type myReader struct{/* ... */}
+
+func (*myReader) Read(bs []byte) (int, error) {
+  // ...
+  return 0, io.EOF //errtrace:skip (io.Reader requires io.EOF)
+}
+```
+
 ## Performance
 
 errtrace is designed to have very low overhead

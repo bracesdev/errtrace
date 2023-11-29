@@ -415,6 +415,30 @@ func TestListFlag(t *testing.T) {
 	}
 }
 
+func TestOptoutLines(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", `package foo
+func _() {
+	_ = "line 3" //errtrace:skip
+	_ = "this line not counted" // errtrace:skip
+	_ = "line 5" //errtrace:skip // has a reason
+	_ = "line 6" //nolint:somelinter //errtrace:skip // stuff
+}`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []int
+	for line := range optoutLines(fset, f.Comments) {
+		got = append(got, line)
+	}
+	sort.Ints(got)
+
+	if want := []int{3, 5, 6}; !slicesEqual(want, got) {
+		t.Errorf("got: %v\nwant: %v\ndiff:\n%s", got, want, diff.Diff(want, got))
+	}
+}
+
 func indent(s string) string {
 	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
 }
@@ -493,4 +517,18 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 	}
 
 	return logs, nil
+}
+
+func slicesEqual[T comparable](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i, va := range a {
+		if va != b[i] {
+			return false
+		}
+	}
+
+	return true
 }
