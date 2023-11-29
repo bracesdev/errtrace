@@ -6,9 +6,9 @@
 
 </div>
 
-!["CI status"](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml/badge.svg)
-!["Go Reference"](https://pkg.go.dev/badge/braces.dev/errtrace.svg)
-!["Code Coverage"](https://codecov.io/gh/bracesdev/errtrace/graph/badge.svg?token=KDY04XEEJ9)
+[![CI](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml/badge.svg)](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/braces.dev/errtrace.svg)](https://pkg.go.dev/braces.dev/errtrace)
+[![codecov](https://codecov.io/gh/bracesdev/errtrace/graph/badge.svg?token=KDY04XEEJ9)](https://codecov.io/gh/bracesdev/errtrace)
 
 - [Introduction](#introduction)
   - [Features](#features)
