@@ -259,6 +259,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	var inserts []insert
 	w := walker{
 		fset:     fset,
+		optouts:  optoutLines(fset, f.Comments),
 		errtrace: errtracePkg,
 		logger:   cmd.log,
 		inserts:  &inserts,
@@ -419,7 +420,8 @@ type walker struct {
 	// Inputs
 
 	fset     *token.FileSet // file set for positional information
-	errtrace string         // name of the errtrace package
+	optouts  map[int]struct{}
+	errtrace string // name of the errtrace package
 	logger   *log.Logger
 
 	// Outputs
@@ -567,6 +569,10 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 	// Naked return.
 	// We want to add assignments to the named return values.
 	if n.Results == nil {
+		if t.optout(n.Pos()) {
+			return nil
+		}
+
 		// Ignore errors that have already been wrapped.
 		names := make([]string, 0, len(t.errorIndices))
 		for _, ident := range t.errorIdents {
@@ -688,6 +694,9 @@ func (t *walker) wrapExpr(n int, expr ast.Expr) {
 	case t.isErrtraceWrap(expr):
 		return // already wrapped
 
+	case t.optout(expr.Pos()):
+		return
+
 	case isIdent(expr, "nil"):
 		// Optimization: ignore if it's "nil".
 		return
@@ -719,6 +728,14 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 	return strings.HasPrefix(sel.Sel.Name, "Wrap") ||
 		sel.Sel.Name == "New" ||
 		sel.Sel.Name == "Errorf"
+}
+
+// optout reports whether the line at the given position
+// is opted out of tracing.
+func (t *walker) optout(pos token.Pos) bool {
+	line := t.fset.Position(pos).Line
+	_, ok := t.optouts[line]
+	return ok
 }
 
 // insert is a request to add something to the source code.
@@ -827,4 +844,28 @@ func setOf[T comparable](xs []T) map[T]struct{} {
 		set[x] = struct{}{}
 	}
 	return set
+}
+
+// optoutLines returns the line numbers
+// that have a comment in the form:
+//
+//	//errtrace:skip
+//
+// It may be followed by other text, e.g.,
+//
+//	//errtrace:skip // for reasons
+func optoutLines(
+	fset *token.FileSet,
+	comments []*ast.CommentGroup,
+) map[int]struct{} {
+	lines := make(map[int]struct{})
+	for _, cg := range comments {
+		for _, c := range cg.List {
+			if strings.Contains(c.Text, "//errtrace:skip") {
+				lineNo := fset.Position(c.Pos()).Line
+				lines[lineNo] = struct{}{}
+			}
+		}
+	}
+	return lines
 }

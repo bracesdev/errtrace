@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -412,6 +413,30 @@ func TestListFlag(t *testing.T) {
 	// Only the uninstrumented file should be listed.
 	if want, got := uninstrumented+"\n", out.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diff.Lines(want, got)))
+	}
+}
+
+func TestOptoutLines(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "", `package foo
+func _() {
+	_ = "line 3" //errtrace:skip
+	_ = "this line not counted" // errtrace:skip
+	_ = "line 5" //errtrace:skip // has a reason
+	_ = "line 6" //nolint:somelinter //errtrace:skip // stuff
+}`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []int
+	for line := range optoutLines(fset, f.Comments) {
+		got = append(got, line)
+	}
+	sort.Ints(got)
+
+	if want := []int{3, 5, 6}; !reflect.DeepEqual(want, got) {
+		t.Errorf("got: %v\nwant: %v\ndiff:\n%s", got, want, diff.Diff(want, got))
 	}
 }
 
