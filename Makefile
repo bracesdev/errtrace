@@ -42,14 +42,6 @@ bench:
 bench-parallel:
 	go test -run NONE -bench . -cpu 1,2,4,8
 
-README.md: $(wildcard doc/*.md)
-	@if ! command -v stitchmd >/dev/null; then \
-		echo "stitchmd not found. Installing..."; \
-		go.abhg.dev/stitchmd@latest; \
-	fi; \
-	echo "Generating $@"; \
-	stitchmd -o $@ doc/SUMMARY.md
-
 .PHONY: lint
 lint: golangci-lint
 
