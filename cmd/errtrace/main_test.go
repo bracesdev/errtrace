@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -434,7 +435,7 @@ func _() {
 	}
 	sort.Ints(got)
 
-	if want := []int{3, 5, 6}; !slicesEqual(want, got) {
+	if want := []int{3, 5, 6}; !reflect.DeepEqual(want, got) {
 		t.Errorf("got: %v\nwant: %v\ndiff:\n%s", got, want, diff.Diff(want, got))
 	}
 }
@@ -517,18 +518,4 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 	}
 
 	return logs, nil
-}
-
-func slicesEqual[T comparable](a, b []T) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i, va := range a {
-		if va != b[i] {
-			return false
-		}
-	}
-
-	return true
 }
