@@ -17,6 +17,7 @@
 //	      whether to format ouput; one of: [auto, always, never].
 //	      auto is the default and will format if the output is being written to a file.
 //	-w    write result to the given source files instead of stdout.
+//	-l    list files that would be modified without making any changes.
 package main
 
 // TODO
@@ -49,6 +50,7 @@ func main() {
 
 type mainParams struct {
 	Write  bool     // -w
+	List   bool     // -l
 	Format format   // -format
 	Files  []string // list of files to process
 }
@@ -78,6 +80,8 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		"auto is the default and will format if the output is being written to a file.")
 	flag.BoolVar(&p.Write, "w", false,
 		"write result to the given source files instead of stdout.")
+	flag.BoolVar(&p.List, "l", false,
+		"list files that would be modified without making any changes.")
 	// TODO: toolexec mode
 
 	if err := flag.Parse(args); err != nil {
@@ -172,6 +176,7 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 		req := fileRequest{
 			Format:   p.shouldFormat(),
 			Write:    p.Write,
+			List:     p.List,
 			Filename: file,
 		}
 		if err := cmd.processFile(req); err != nil {
@@ -186,6 +191,7 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 type fileRequest struct {
 	Format   bool
 	Write    bool
+	List     bool
 	Filename string
 }
 
@@ -258,6 +264,13 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		inserts:  &inserts,
 	}
 	ast.Walk(&w, f)
+
+	if r.List {
+		if len(inserts) > 0 {
+			_, err = fmt.Fprintf(cmd.Stdout, "%s\n", r.Filename)
+		}
+		return err
+	}
 
 	// If errtrace isn't imported, but at least one insert was made,
 	// we'll need to import errtrace.
