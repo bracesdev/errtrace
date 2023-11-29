@@ -1,0 +1,5 @@
+# Don't post comments.
+comment: false
+
+ignore:
+  - 'internal/diff/*.go'  # we hit this only if tests fail
