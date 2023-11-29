@@ -52,7 +52,11 @@ func MustClean(trace string) string {
 func getErrtraceDir() string {
 	_, file, _, _ := runtime.Caller(0)
 	// Note: Assumes specific location of this file in errtrace, strip internal/tracetest/<file>
-	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
+	dir := filepath.Dir(filepath.Dir(filepath.Dir(file)))
+
+	// On Windows, filepath.Dir cleans the path, which modifies the separator.
+	// To get back the original separator, truncate the original string.
+	return file[:len(dir)]
 }
 
 // fileLineReplacer maintains a mapping from
