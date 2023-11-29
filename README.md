@@ -196,6 +196,10 @@ runtime.goexit
 <tr>
 <td>errtrace reports the method that triggered the HTTP request</td>
 <td>stacktrace shows details of how the HTTP client creates a connection</td>
+</tr>
+</tbody>
+</table>
+
 </details>
 
 ### Why is this useful?
