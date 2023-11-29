@@ -35,11 +35,14 @@ jobs:
       uses: docker/setup-qemu-action@v3
 
     - name: Test ${{ matrix.arch }}
-      run: make test
+      run: make cover
       env:
         GOARCH: ${{ matrix.arch }}
         # Only amd64/arm64 support RACE, disable it on all other architectures.
         NO_RACE: ${{ (matrix.arch == 'amd64' || matrix.arch == 'arm64') && '' || '1' }}
+
+    - name: Coverage
+      uses: codecov/codecov-action@v3
 
   lint:
     name: Lint
