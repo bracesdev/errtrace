@@ -20,7 +20,7 @@ test:
 cover:
 	go test -coverprofile cover.unsafe.out -coverpkg ./... $(RACE) -v ./...
 	go test -coverprofile cover.safe.out -coverpkg ./... $(RACE) -tags safe -v ./...
-	go test -coverprofile cover.noinline.out -coverpkg ./... -gcflags='-l -N' ./... # disable optimizations/inlining
+	go test ./... -gcflags='-l -N' ./... # disable optimizations/inlining
 
 .PHONY: bench
 bench:

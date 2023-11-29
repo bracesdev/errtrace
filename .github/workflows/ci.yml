@@ -51,7 +51,7 @@ jobs:
     - name: Coverage
       uses: codecov/codecov-action@v3
       with:
-        files: ./cover.unsafe.out,./cover.safe.out,./cover.noinline.out
+        files: ./cover.unsafe.out,./cover.safe.out
 
   lint:
     name: Lint
