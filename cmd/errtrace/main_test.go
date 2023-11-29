@@ -461,13 +461,12 @@ func extractLogs(src []byte) ([]logLine, error) {
 	var logs []logLine
 	for _, c := range f.Comments {
 		for _, l := range c.List {
-			if !strings.HasPrefix(l.Text, "// want:") {
+			_, lit, ok := strings.Cut(l.Text, "// want:")
+			if !ok {
 				continue
 			}
 
 			pos := fset.Position(l.Pos())
-			lit := strings.TrimPrefix(l.Text, "// want:")
-
 			s, err := strconv.Unquote(lit)
 			if err != nil {
 				return nil, fmt.Errorf("%s:bad string literal: %s", pos, lit)
@@ -499,11 +498,18 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 		}
 
 		var msg string
-		switch len(parts) {
-		case 3:
-			msg = parts[2] // file:line:msg
-		case 4:
-			msg = parts[3] // file:line:column:msg
+		if len(parts) == 4 {
+			if _, err := strconv.Atoi(parts[2]); err == nil {
+				// file:line:column:msg
+				msg = parts[3]
+			}
+		}
+		if msg == "" && len(parts) >= 2 {
+			// file:line:msg
+			msg = strings.Join(parts[2:], ":")
+		}
+		if msg == "" {
+			return nil, fmt.Errorf("bad log line: %q", line)
 		}
 
 		lineNum, err := strconv.Atoi(parts[1])

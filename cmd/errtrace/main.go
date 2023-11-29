@@ -256,15 +256,35 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		}
 	}
 
-	var inserts []insert
+	var (
+		inserts     []insert
+		usedOptouts []int
+	)
 	w := walker{
-		fset:     fset,
-		optouts:  optoutLines(fset, f.Comments),
-		errtrace: errtracePkg,
-		logger:   cmd.log,
-		inserts:  &inserts,
+		fset:        fset,
+		optouts:     optoutLines(fset, f.Comments),
+		errtrace:    errtracePkg,
+		logger:      cmd.log,
+		inserts:     &inserts,
+		optoutsUsed: &usedOptouts,
 	}
 	ast.Walk(&w, f)
+
+	// Look for unused optouts and warn about them.
+	for _, line := range usedOptouts {
+		delete(w.optouts, line)
+	}
+	if len(w.optouts) > 0 {
+		unusedOptouts := make([]int, 0, len(w.optouts))
+		for line := range w.optouts {
+			unusedOptouts = append(unusedOptouts, line)
+		}
+		sort.Ints(unusedOptouts)
+
+		for _, line := range unusedOptouts {
+			cmd.log.Printf("%s:%d:unused errtrace:skip", r.Filename, line)
+		}
+	}
 
 	if r.List {
 		if len(inserts) > 0 {
@@ -420,9 +440,11 @@ type walker struct {
 	// Inputs
 
 	fset     *token.FileSet // file set for positional information
-	optouts  map[int]struct{}
-	errtrace string // name of the errtrace package
+	errtrace string         // name of the errtrace package
 	logger   *log.Logger
+
+	optouts     map[int]struct{}
+	optoutsUsed *[]int // line numbers of optouts that were used
 
 	// Outputs
 
@@ -694,11 +716,12 @@ func (t *walker) wrapExpr(n int, expr ast.Expr) {
 	case t.isErrtraceWrap(expr):
 		return // already wrapped
 
-	case t.optout(expr.Pos()):
-		return
-
 	case isIdent(expr, "nil"):
 		// Optimization: ignore if it's "nil".
+		return
+	}
+
+	if t.optout(expr.Pos()) {
 		return
 	}
 
@@ -735,6 +758,9 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 func (t *walker) optout(pos token.Pos) bool {
 	line := t.fset.Position(pos).Line
 	_, ok := t.optouts[line]
+	if ok {
+		*t.optoutsUsed = append(*t.optoutsUsed, line)
+	}
 	return ok
 }
 
