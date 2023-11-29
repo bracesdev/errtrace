@@ -39,7 +39,7 @@ since errors are values that can be transported across goroutines
 When that happens, a return trace can be more useful than a stack trace.
 
 This library is inspired by
-[Zig’s error return traces](https://ziglang.org/documentation/0.11.0/#Error-Return-Traces).
+[Zig's error return traces](https://ziglang.org/documentation/0.11.0/#Error-Return-Traces).
 
 ### Features
 
@@ -74,8 +74,8 @@ Try out errtrace with your own code:
    ```
 4. Run your tests to ensure everything still works.
   You may see failures
-  if you’re comparing errors with `==` on critical paths
-  or if you’re type-casting errors directly.
+  if you're comparing errors with `==` on critical paths
+  or if you're type-casting errors directly.
   See [Error wrapping](#error-wrapping) for more details.
 
    ```bash
@@ -208,8 +208,8 @@ This level of flexibility is great,
 but it can also make it difficult to track down the source of an error.
 A stack trace stored in an error -- recorded at the error site --
 becomes less useful as the error moves through the program.
-When it’s eventually surfaced to the user,
-we’ve lost a lot of context about its origin.
+When it's eventually surfaced to the user,
+we've lost a lot of context about its origin.
 
 With errtrace,
 we instead record the path the program took from the error site
@@ -245,7 +245,7 @@ import "braces.dev/errtrace"
 ```
 
 Under manual instrumentation,
-you’re expected to import errtrace,
+you're expected to import errtrace,
 and wrap errors at all return sites like so:
 
 ```go
@@ -276,7 +276,7 @@ func writeToFile(path string, src io.Reader) error {
 }
 ```
 
-With errtrace, you’d change it to:
+With errtrace, you'd change it to:
 
 ```go
 func writeToFile(path string, src io.Reader) error {
@@ -294,15 +294,15 @@ func writeToFile(path string, src io.Reader) error {
 }
 ```
 
-It’s important that the `errtrace.Wrap` function is called
-inside the same function that’s actually returning the error.
+It's important that the `errtrace.Wrap` function is called
+inside the same function that's actually returning the error.
 A helper function will not suffice.
 </details>
 
 ### Automatic instrumentation
 
 If manual instrumentation is too much work (we agree),
-we’ve included a tool that will automatically instrument
+we've included a tool that will automatically instrument
 all your code with errtrace.
 
 First, [install the tool](#installation).
@@ -353,7 +353,7 @@ errtrace operates by wrapping your errors to add caller information.
 As a result of this,
 error comparisons and type-casting may not work as expected.
 You can no longer use `==` to compare errors, or type-cast them directly.
-You must use the standard library’s
+You must use the standard library's
 [errors.Is](https://pkg.go.dev/errors#Is) and
 [errors.As](https://pkg.go.dev/errors#As) functions.
 
@@ -392,7 +392,7 @@ ok := errors.As(err, &exitErr)       // ok = true
 
 You can use [go-errorlint](https://github.com/polyfloyd/go-errorlint)
 to find places in your code
-where you’re comparing errors with `==` instead of using `errors.Is`
+where you're comparing errors with `==` instead of using `errors.Is`
 or type-casting them directly instead of using `errors.As`.
 
 ### Safety
@@ -413,7 +413,7 @@ go build -tags safe
 
 #### Supported systems
 
-errtrace’s unsafe operations are currently implemented
+errtrace's unsafe operations are currently implemented
 for `GOARCH=amd64` and `GOARCH=arm64` only.
 Other systems are supported but they will use safe mode, which is slower.
 
@@ -429,7 +429,7 @@ to discuss the feature with us.
 ## Acknowledgements
 
 The idea of tracing return paths instead of stack traces
-comes from [Zig’s error return traces](https://ziglang.org/documentation/0.11.0/#Error-Return-Traces).
+comes from [Zig's error return traces](https://ziglang.org/documentation/0.11.0/#Error-Return-Traces).
 
 ## License
 
