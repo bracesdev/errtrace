@@ -43,6 +43,7 @@ jobs:
     - name: Test ${{ matrix.arch }}
       run: make cover
       env:
+        COVERDIR: ${{ runner.temp }}
         GOARCH: ${{ matrix.arch }}
         # Only amd64/arm64 support RACE, disable it on all other architectures.
         NO_RACE: ${{ (matrix.arch == 'amd64' || matrix.arch == 'arm64') && '' || '1' }}

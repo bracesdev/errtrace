@@ -402,7 +402,7 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 		line = strings.TrimPrefix(line, file)
 		parts := strings.SplitN(line, ":", 4)
 		if len(parts) != 4 {
-			return nil, fmt.Errorf("bad log line1: %q", line)
+			return nil, fmt.Errorf("bad log line: %q", line)
 		}
 
 		var msg string
