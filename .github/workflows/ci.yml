@@ -22,6 +22,8 @@ jobs:
         include:
         - os: 'macos-latest'
           arch: 'amd64'
+        - os: 'windows-latest'
+          arch: 'amd64'
 
     steps:
     - name: Checkout code
