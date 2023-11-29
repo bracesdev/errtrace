@@ -21,8 +21,7 @@ test:
 cover: export GOEXPERIMENT = coverageredesign
 cover:
 	$(eval COVERDIR := $(shell mktemp -d))
-	make test GO_TEST_FLAGS="-test.gocoverdir=$(COVERDIR) -coverpkg=./... -covermode=atomic"
-	go tool covdata textfmt -i=$(COVERDIR) -o=cover.out
+	make test GO_TEST_FLAGS="-coverprofile=cover.out -coverpkg=./... -covermode=atomic"
 	go tool cover -html=cover.out -o=cover.html
 
 # NOTE:
