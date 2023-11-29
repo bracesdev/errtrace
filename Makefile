@@ -9,6 +9,7 @@ export PATH := $(GOBIN):$(PATH)
 RACE=$(if $(NO_RACE),,-race)
 
 GOLANGCI_LINT_ARGS ?=
+GO_TEST_FLAGS ?=
 
 .PHONY: test
 test:
@@ -16,11 +17,10 @@ test:
 	go test $(GO_TEST_FLAGS) $(RACE) -tags safe -v ./...
 	go test $(GO_TEST_FLAGS) -gcflags='-l -N' ./... # disable optimizations/inlining
 
-COVERDIR ?= $(shell mktemp -d)
 .PHONY: cover
 cover: export GOEXPERIMENT = coverageredesign
 cover:
-	mkdir -p $(COVERDIR)
+	$(eval COVERDIR := $(shell mktemp -d))
 	make test GO_TEST_FLAGS="-test.gocoverdir=$(COVERDIR) -coverpkg=./... -covermode=atomic"
 	go tool covdata textfmt -i=$(COVERDIR) -o=cover.out
 	go tool cover -html=cover.out -o=cover.html
