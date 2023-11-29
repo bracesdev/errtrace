@@ -65,6 +65,30 @@ func testGolden(t *testing.T, file string) {
 		t.Fatal(err)
 	}
 
+	// If the source is expected to change,
+	// also verify that running with -l lists the file.
+	// Otherwise, verify that running with -l does not list the file.
+	t.Run("list", func(t *testing.T) {
+		var out bytes.Buffer
+		exitCode := (&mainCmd{
+			Stdout: &out,
+			Stderr: io.Discard,
+		}).Run([]string{"-l", srcPath})
+		if want := 0; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+
+		if bytes.Equal(giveSrc, wantSrc) {
+			if want, got := "", out.String(); got != want {
+				t.Errorf("expected no output, got:\n%s", indent(got))
+			}
+		} else {
+			if want, got := srcPath+"\n", out.String(); got != want {
+				t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diff.Lines(want, got)))
+			}
+		}
+	})
+
 	var stdout, stderr bytes.Buffer
 	defer func() {
 		if t.Failed() {
@@ -345,6 +369,50 @@ func TestFormatAuto(t *testing.T) {
 			t.Errorf("stderr = %q, want %q", got, want)
 		}
 	})
+}
+
+func TestListFlag(t *testing.T) {
+	uninstrumentedSource := strings.Join([]string{
+		"package foo",
+		`import "errors"`,
+		"func foo() error {",
+		`	return errors.New("foo")`,
+		"}",
+	}, "\n")
+
+	instrumentedSource := strings.Join([]string{
+		"package foo",
+		`import "errors"; import "braces.dev/errtrace"`,
+		"func foo() error {",
+		`	return errtrace.Wrap(errors.New("foo"))`,
+		"}",
+	}, "\n")
+
+	dir := t.TempDir()
+
+	instrumented := filepath.Join(dir, "instrumented.go")
+	if err := os.WriteFile(instrumented, []byte(instrumentedSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uninstrumented := filepath.Join(dir, "uninstrumented.go")
+	if err := os.WriteFile(uninstrumented, []byte(uninstrumentedSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	exitCode := (&mainCmd{
+		Stdout: &out,
+		Stderr: io.Discard,
+	}).Run([]string{"-l", uninstrumented, instrumented})
+	if want := 0; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	// Only the uninstrumented file should be listed.
+	if want, got := uninstrumented+"\n", out.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s\ndiff:\n%s", indent(got), indent(want), indent(diff.Lines(want, got)))
+	}
 }
 
 func indent(s string) string {
