@@ -12,12 +12,16 @@ permissions:
 jobs:
 
   test:
-    name: Test / Go ${{ matrix.go-version }} / ${{ matrix.arch }}
-    runs-on: ubuntu-latest
+    name: Test / Go ${{ matrix.go-version }} / ${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         go-version: ['1.21.x', '1.20.x']
         arch: ['amd64', '386', 'arm64']
+        os: ['ubuntu-latest']
+        include:
+        - os: 'macos-latest'
+          arch: 'amd64'
 
     steps:
     - name: Checkout code
