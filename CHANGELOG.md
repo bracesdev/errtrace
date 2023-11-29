@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lower `go` directive in go.mod to 1.20
   to allow use with older versions.
 
+### Fixed
+- Add a README.md to render alongside the
+  [API reference](https://pkg.go.dev/braces.dev/errtrace).
+
 ## v0.1.0 - 2023-11-28
 
 Introducing errtrace, an experimental library
