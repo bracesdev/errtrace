@@ -62,3 +62,10 @@ func Diff[T comparable](want, got []T) string {
 
 	return buf.String()
 }
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
