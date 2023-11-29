@@ -22,6 +22,8 @@ jobs:
         include:
         - os: 'macos-latest'
           arch: 'amd64'
+        - os: 'windows-latest'
+          arch: 'amd64'
 
     steps:
     - name: Checkout code
@@ -40,6 +42,7 @@ jobs:
 
     - name: Test ${{ matrix.arch }}
       run: make cover
+      shell: bash
       env:
         GOARCH: ${{ matrix.arch }}
         # Only amd64/arm64 support RACE, disable it on all other architectures.
@@ -47,6 +50,8 @@ jobs:
 
     - name: Coverage
       uses: codecov/codecov-action@v3
+      with:
+        files: ./cover.unsafe.out,./cover.safe.out
 
   lint:
     name: Lint

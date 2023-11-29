@@ -92,7 +92,7 @@ func testGolden(t *testing.T, file string) {
 	}
 
 	// Check that the log messages match.
-	gotLogs, err := parseLogOutput(stderr.String())
+	gotLogs, err := parseLogOutput(srcPath, stderr.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,13 +391,15 @@ func extractLogs(src []byte) ([]logLine, error) {
 	return logs, nil
 }
 
-func parseLogOutput(s string) ([]logLine, error) {
+func parseLogOutput(file, s string) ([]logLine, error) {
 	var logs []logLine
 	for _, line := range strings.Split(s, "\n") {
 		if line == "" {
 			continue
 		}
 
+		// Drop the path so we can determinstically split on ":" (which is a valid character in Windows paths).
+		line = strings.TrimPrefix(line, file)
 		parts := strings.SplitN(line, ":", 4)
 		if len(parts) != 4 {
 			return nil, fmt.Errorf("bad log line: %q", line)
@@ -411,13 +413,13 @@ func parseLogOutput(s string) ([]logLine, error) {
 			msg = parts[3] // file:line:column:msg
 		}
 
-		line, err := strconv.Atoi(parts[1])
+		lineNum, err := strconv.Atoi(parts[1])
 		if err != nil {
 			return nil, fmt.Errorf("bad log line: %q", line)
 		}
 
 		logs = append(logs, logLine{
-			Line: line,
+			Line: lineNum,
 			Msg:  msg,
 		})
 	}

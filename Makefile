@@ -9,30 +9,18 @@ export PATH := $(GOBIN):$(PATH)
 RACE=$(if $(NO_RACE),,-race)
 
 GOLANGCI_LINT_ARGS ?=
-GO_TEST_FLAGS ?=
 
 .PHONY: test
 test:
-	go test $(GO_TEST_FLAGS) $(RACE) -v ./...
-	go test $(GO_TEST_FLAGS) $(RACE) -tags safe -v ./...
-	go test $(GO_TEST_FLAGS) -gcflags='-l -N' ./... # disable optimizations/inlining
+	go test $(RACE) -v ./...
+	go test $(RACE) -tags safe -v ./...
+	go test -gcflags='-l -N' ./... # disable optimizations/inlining
 
 .PHONY: cover
-cover: export GOEXPERIMENT = coverageredesign
 cover:
-	$(eval COVERDIR := $(shell mktemp -d))
-	make test GO_TEST_FLAGS="-test.gocoverdir=$(COVERDIR) -coverpkg=./... -covermode=atomic"
-	go tool covdata textfmt -i=$(COVERDIR) -o=cover.out
-	go tool cover -html=cover.out -o=cover.html
-
-# NOTE:
-# The cover target uses the undocumented test.gocoverdir flag
-# to generate three coverage reports and merge them with the coverage redesign.
-#
-# Ref: https://github.com/golang/go/issues/51430#issuecomment-1344711300
-#
-# The alternative is to generate three coverage reports
-# and figure out how to merge them ourselves.
+	go test -coverprofile cover.unsafe.out -coverpkg ./... $(RACE) -v ./...
+	go test -coverprofile cover.safe.out -coverpkg ./... $(RACE) -tags safe -v ./...
+	go test ./... -gcflags='-l -N' ./... # disable optimizations/inlining
 
 .PHONY: bench
 bench:
