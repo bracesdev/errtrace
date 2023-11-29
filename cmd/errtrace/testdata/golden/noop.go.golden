@@ -14,7 +14,7 @@ func failure() error {
 	return errors.New("failure") //errtrace:skip
 }
 
-func defered() (err error) {
+func deferred() (err error) {
 	defer func() {
 		err = errors.New("failure") //errtrace:skip
 	}()
