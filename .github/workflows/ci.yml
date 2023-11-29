@@ -22,8 +22,10 @@ jobs:
         include:
         - os: 'macos-latest'
           arch: 'amd64'
+          go-version: '1.21.x'
         - os: 'windows-latest'
           arch: 'amd64'
+          go-version: '1.21.x'
 
     steps:
     - name: Checkout code
