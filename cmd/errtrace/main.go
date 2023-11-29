@@ -275,7 +275,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	// If errtrace isn't imported, but at least one insert was made,
 	// we'll need to import errtrace.
 	// Add an import declaration to the file.
-	if !importsErrtrace {
+	if !importsErrtrace && len(inserts) > 0 {
 		// We want to insert the import after the last existing import.
 		// If the last import is part of a group, we'll make it part of the group.
 		//
