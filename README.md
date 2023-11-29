@@ -24,8 +24,8 @@
 
 ## Introduction
 
-errtrace is an **experimental** package to trace an error's return path --
-the return trace -- through a Go program.
+errtrace is an **experimental** package to trace an error's return path &mdash;
+the return trace &mdash; through a Go program.
 
 Where a stack trace tracks the code path that led to an error,
 a return trace tracks the code path that the error took to get to the user.
@@ -202,14 +202,14 @@ This means that an error can be passed around like any other value.
 You can store it in a struct, pass it through a channel, etc.
 This level of flexibility is great,
 but it can also make it difficult to track down the source of an error.
-A stack trace stored in an error -- recorded at the error site --
+A stack trace stored in an error &mdash; recorded at the error site &mdash;
 becomes less useful as the error moves through the program.
 When it's eventually surfaced to the user,
 we've lost a lot of context about its origin.
 
 With errtrace,
 we instead record the path the program took from the error site
-to get to the user -- the **return trace**.
+to get to the user &mdash; the **return trace**.
 Not only can this be more useful than a stack trace,
 it tends to be much faster and more lightweight as well.
 
