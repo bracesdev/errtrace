@@ -256,28 +256,23 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		}
 	}
 
-	var (
-		inserts     []insert
-		usedOptouts []int
-	)
+	var inserts []insert
 	w := walker{
-		fset:        fset,
-		optouts:     optoutLines(fset, f.Comments),
-		errtrace:    errtracePkg,
-		logger:      cmd.log,
-		inserts:     &inserts,
-		optoutsUsed: &usedOptouts,
+		fset:     fset,
+		optouts:  optoutLines(fset, f.Comments),
+		errtrace: errtracePkg,
+		logger:   cmd.log,
+		inserts:  &inserts,
 	}
 	ast.Walk(&w, f)
 
 	// Look for unused optouts and warn about them.
-	for _, line := range usedOptouts {
-		delete(w.optouts, line)
-	}
 	if len(w.optouts) > 0 {
 		unusedOptouts := make([]int, 0, len(w.optouts))
-		for line := range w.optouts {
-			unusedOptouts = append(unusedOptouts, line)
+		for line, used := range w.optouts {
+			if used == 0 {
+				unusedOptouts = append(unusedOptouts, line)
+			}
 		}
 		sort.Ints(unusedOptouts)
 
@@ -443,8 +438,7 @@ type walker struct {
 	errtrace string         // name of the errtrace package
 	logger   *log.Logger
 
-	optouts     map[int]struct{}
-	optoutsUsed *[]int // line numbers of optouts that were used
+	optouts map[int]int // map from line to number of uses
 
 	// Outputs
 
@@ -754,12 +748,12 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 }
 
 // optout reports whether the line at the given position
-// is opted out of tracing.
+// is opted out of tracing, incrementing uses if so.
 func (t *walker) optout(pos token.Pos) bool {
 	line := t.fset.Position(pos).Line
 	_, ok := t.optouts[line]
 	if ok {
-		*t.optoutsUsed = append(*t.optoutsUsed, line)
+		t.optouts[line]++
 	}
 	return ok
 }
@@ -883,13 +877,13 @@ func setOf[T comparable](xs []T) map[T]struct{} {
 func optoutLines(
 	fset *token.FileSet,
 	comments []*ast.CommentGroup,
-) map[int]struct{} {
-	lines := make(map[int]struct{})
+) map[int]int {
+	lines := make(map[int]int)
 	for _, cg := range comments {
 		for _, c := range cg.List {
 			if strings.Contains(c.Text, "//errtrace:skip") {
 				lineNo := fset.Position(c.Pos()).Line
-				lines[lineNo] = struct{}{}
+				lines[lineNo] = 0
 			}
 		}
 	}
