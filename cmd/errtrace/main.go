@@ -266,6 +266,21 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	}
 	ast.Walk(&w, f)
 
+	// Look for unused optouts and warn about them.
+	if len(w.optouts) > 0 {
+		unusedOptouts := make([]int, 0, len(w.optouts))
+		for line, used := range w.optouts {
+			if used == 0 {
+				unusedOptouts = append(unusedOptouts, line)
+			}
+		}
+		sort.Ints(unusedOptouts)
+
+		for _, line := range unusedOptouts {
+			cmd.log.Printf("%s:%d:unused errtrace:skip", r.Filename, line)
+		}
+	}
+
 	if r.List {
 		if len(inserts) > 0 {
 			_, err = fmt.Fprintf(cmd.Stdout, "%s\n", r.Filename)
@@ -420,9 +435,10 @@ type walker struct {
 	// Inputs
 
 	fset     *token.FileSet // file set for positional information
-	optouts  map[int]struct{}
-	errtrace string // name of the errtrace package
+	errtrace string         // name of the errtrace package
 	logger   *log.Logger
+
+	optouts map[int]int // map from line to number of uses
 
 	// Outputs
 
@@ -694,11 +710,12 @@ func (t *walker) wrapExpr(n int, expr ast.Expr) {
 	case t.isErrtraceWrap(expr):
 		return // already wrapped
 
-	case t.optout(expr.Pos()):
-		return
-
 	case isIdent(expr, "nil"):
 		// Optimization: ignore if it's "nil".
+		return
+	}
+
+	if t.optout(expr.Pos()) {
 		return
 	}
 
@@ -731,10 +748,13 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 }
 
 // optout reports whether the line at the given position
-// is opted out of tracing.
+// is opted out of tracing, incrementing uses if so.
 func (t *walker) optout(pos token.Pos) bool {
 	line := t.fset.Position(pos).Line
 	_, ok := t.optouts[line]
+	if ok {
+		t.optouts[line]++
+	}
 	return ok
 }
 
@@ -857,13 +877,13 @@ func setOf[T comparable](xs []T) map[T]struct{} {
 func optoutLines(
 	fset *token.FileSet,
 	comments []*ast.CommentGroup,
-) map[int]struct{} {
-	lines := make(map[int]struct{})
+) map[int]int {
+	lines := make(map[int]int)
 	for _, cg := range comments {
 		for _, c := range cg.List {
 			if strings.Contains(c.Text, "//errtrace:skip") {
 				lineNo := fset.Position(c.Pos()).Line
-				lines[lineNo] = struct{}{}
+				lines[lineNo] = 0
 			}
 		}
 	}

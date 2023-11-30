@@ -23,3 +23,12 @@ func Try(problem bool) (int, error) {
 
 	return bar.Baz() //errtrace:skip // caller wants unwrapped error
 }
+
+func unused() error {
+	return nil //errtrace:skip // want:"unused errtrace:skip"
+}
+
+func multipleReturns() (a, b error) {
+	return errors.New("a"),
+		errors.New("b") //errtrace:skip
+}

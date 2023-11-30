@@ -31,3 +31,7 @@ func immediatelyInvoked() error {
 		return errors.New("failure") //errtrace:skip
 	}()
 }
+
+func multipleReturns() (error, error) {
+	return errors.New("a"), errors.New("b") //errtrace:skip
+}
