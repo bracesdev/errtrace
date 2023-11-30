@@ -33,6 +33,11 @@ func multipleReturns() (a, b error) {
 		errors.New("b") //errtrace:skip
 }
 
+func multipleReturnsSkipped() (a, b error) {
+	return errors.New("a"), //errtrace:skip
+		errors.New("b") //errtrace:skip
+}
+
 // Explanation of why this function
 // is not using //errtrace:skip should not
 // trip up the warning.
