@@ -884,7 +884,8 @@ func optoutLines(
 	lines := make(map[int]int)
 	for _, cg := range comments {
 		if len(cg.List) > 1 {
-			continue // skip multiline comments
+			// skip multiline comments which are full line comments, not tied to a return.
+			continue
 		}
 
 		c := cg.List[0]
