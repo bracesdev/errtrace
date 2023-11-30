@@ -15,7 +15,7 @@ func Try(problem bool) (int, error) {
 			return errors.New("great sadness")
 		}
 
-		return io.EOF //errtrace:skip // expects io.EOF
+		return io.EOF //nolint:errwrap //errtrace:skip(expects io.EOF)
 	})
 	if err != nil {
 		return 0, err
@@ -31,4 +31,11 @@ func unused() error {
 func multipleReturns() (a, b error) {
 	return errors.New("a"),
 		errors.New("b") //errtrace:skip
+}
+
+// Explanation of why this function
+// is not using //errtrace:skip should not
+// trip up the warning.
+func notUsingSkip() error {
+	return nil
 }

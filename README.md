@@ -352,7 +352,8 @@ on relevant lines:
 
 ```go
 //errtrace:skip
-//errtrace:skip explanation
+//errtrace:skip(explanation)
+//errtrace:skip // explanation
 ```
 
 This can be especially useful if the returned error
@@ -367,7 +368,7 @@ type myReader struct{/* ... */}
 
 func (*myReader) Read(bs []byte) (int, error) {
   // ...
-  return 0, io.EOF //errtrace:skip (io.Reader requires io.EOF)
+  return 0, io.EOF //errtrace:skip(io.Reader expects io.EOF)
 }
 ```
 
