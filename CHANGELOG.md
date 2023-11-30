@@ -5,12 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v0.2.0 - 2023-11-30
+
+This release contains minor improvements to the errtrace code transformer
+allowing it to fit more use cases.
+
 ### Added
-- cmd/errtrace: Add -l flag to print files that would be changed
-  without changing them.
-- cmd/errtrace: Support opt-out for specific lines
-  with a `//errtrace:skip` comment.
+- cmd/errtrace:
+  Add -l flag to print files that would be changed without changing them.
+  You can use this to build a check to verify that your code is instrumented.
+- cmd/errtrace: Support opt-out on lines with a `//errtrace:skip` comment.
+  Optionally, a reason may be specified alongside the comment.
+  The command will print a warning for any unused `//errtrace:skip` comments.
+
+  ```go
+  if err != nil {
+    return io.EOF //errtrace:skip(io.Reader expects io.EOF)
+  }
+  ```
 
 ## v0.1.1 - 2023-11-28
 ### Changed
