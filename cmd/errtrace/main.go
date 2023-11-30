@@ -34,6 +34,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -866,6 +867,8 @@ func setOf[T comparable](xs []T) map[T]struct{} {
 	return set
 }
 
+var _errtraceSkip = regexp.MustCompile(`(^| )//errtrace:skip($|[ \(])`)
+
 // optoutLines returns the line numbers
 // that have a comment in the form:
 //
@@ -880,11 +883,15 @@ func optoutLines(
 ) map[int]int {
 	lines := make(map[int]int)
 	for _, cg := range comments {
-		for _, c := range cg.List {
-			if strings.Contains(c.Text, "//errtrace:skip") {
-				lineNo := fset.Position(c.Pos()).Line
-				lines[lineNo] = 0
-			}
+		if len(cg.List) > 1 {
+			// skip multiline comments which are full line comments, not tied to a return.
+			continue
+		}
+
+		c := cg.List[0]
+		if _errtraceSkip.MatchString(c.Text) {
+			lineNo := fset.Position(c.Pos()).Line
+			lines[lineNo] = 0
 		}
 	}
 	return lines
