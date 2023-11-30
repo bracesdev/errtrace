@@ -124,7 +124,7 @@ that are handled rather than returned to the user,
 as the information is captured incrementally.
 Stack traces pay a fixed cost to capture caller information
 even if the error is handled immediately by the caller
-of where the error is created.
+close to where the error is created.
 
 ### Try it out
 
@@ -182,7 +182,7 @@ example.com/myproject.CallerOfMyFunc
 Here's a real-world example of errtrace in action:
 
 <details>
-<summary>Example 1</summary>
+<summary>Example</summary>
 
 ```
 doc2go: parse file: /path/to/project/example/foo.go:3:1: expected declaration, found invalid
