@@ -8,6 +8,7 @@
 
 - [Introduction](#introduction)
   - [Features](#features)
+  - [Comparison with stack traces](#comparison-with-stack-traces)
   - [Try it out](#try-it-out)
   - [Why is this useful](#why-is-this-useful)
 - [Installation](#installation)
@@ -48,6 +49,82 @@ This library is inspired by
 * **[Fast](#performance)**\
   On popular 64-bit systems,
   errtrace is much faster than capturing a stack trace.
+
+### Comparison with stack traces
+
+With stack traces, caller information for the goroutine is
+captured once when the error is created.
+
+In constrast, errtrace records the caller information incrementally,
+following the return path the error takes to get to the user.
+This approach works even if the error isn't propagated directly
+through function returns, and across goroutines.
+
+Both approaches look similar when the error flows
+through function calls within the same goroutine,
+but can differ significantly when errors are passed
+outside of functions and across goroutines (e.g., channels).
+
+Here's a real-world example that shows the benefits
+of errtrace tracing the return path
+by comparing a custom dial error returned for a HTTP request,
+which the net/http library uses a background goroutine for.
+
+<details open>
+<summary>errtrace compared to a stack trace</summary>
+
+<table>
+<thead>
+<tr><td>errtrace</td><td>stack trace</td></tr>
+</thead>
+<tbody>
+
+<tr><td>
+
+```
+Error: connect rate limited
+
+braces.dev/errtrace_test.rateLimitDialer
+	/path/to/errtrace/example_http_test.go:72
+braces.dev/errtrace_test.(*PackageStore).updateIndex
+	/path/to/errtrace/example_http_test.go:59
+braces.dev/errtrace_test.(*PackageStore).Get
+	/path/to/errtrace/example_http_test.go:49
+```
+
+</td><td>
+
+```
+Error: connect rate limited
+braces.dev/errtrace_test.rateLimitDialer
+	/errtrace/example_stack_test.go:81
+net/http.(*Transport).dial
+	/goroot/src/net/http/transport.go:1190
+net/http.(*Transport).dialConn
+	/goroot/src/net/http/transport.go:1625
+net/http.(*Transport).dialConnFor
+	/goroot/src/net/http/transport.go:1467
+runtime.goexit
+	/goroot/src/runtime/asm_arm64.s:1197
+```
+
+</td></tr>
+<tr>
+<td>errtrace reports the method that triggered the HTTP request</td>
+<td>stack trace shows details of how the HTTP client creates a connection</td>
+</tr>
+</tbody>
+</table>
+
+</details>
+
+errtrace also reduces the performance impact
+of capturing caller information for errors
+that are handled rather than returned to the user,
+as the information is captured incrementally.
+Stack traces pay a fixed cost to capture caller information
+even if the error is handled immediately by the caller
+of where the error is created.
 
 ### Try it out
 
@@ -102,7 +179,7 @@ example.com/myproject.CallerOfMyFunc
 [...]
 ```
 
-Some real world examples of errtrace in action:
+Here's a real-world example of errtrace in action:
 
 <details>
 <summary>Example 1</summary>
@@ -142,58 +219,6 @@ Note the some functions repeat in this trace
 because the functions are mutually recursive.
 </details>
 
-<details open>
-<summary>Example 2</summary>
-
-Realistic comparison of a
-stacktrace versus an error return trace
-for a custom dial error from the HTTP client,
-which happens on a background goroutine.
-
-<table>
-<thead>
-<tr><td>errtrace</td><td>stacktrace</td></tr>
-</thead>
-<tbody>
-
-<tr><td>
-
-```
-Error: connect rate limited
-
-braces.dev/errtrace_test.rateLimitDialer
-	/path/to/errtrace/example_http_test.go:72
-braces.dev/errtrace_test.(*PackageStore).updateIndex
-	/path/to/errtrace/example_http_test.go:59
-braces.dev/errtrace_test.(*PackageStore).Get
-	/path/to/errtrace/example_http_test.go:49
-```
-
-</td><td>
-
-```
-Error: connect rate limited
-braces.dev/errtrace_test.rateLimitDialer
-	/errtrace/example_stack_test.go:81
-net/http.(*Transport).dial
-	/goroot/src/net/http/transport.go:1190
-net/http.(*Transport).dialConn
-	/goroot/src/net/http/transport.go:1625
-net/http.(*Transport).dialConnFor
-	/goroot/src/net/http/transport.go:1467
-runtime.goexit
-	/goroot/src/runtime/asm_arm64.s:1197
-```
-
-</td></tr>
-<tr>
-<td>errtrace reports the method that triggered the HTTP request</td>
-<td>stacktrace shows details of how the HTTP client creates a connection</td>
-</tr>
-</tbody>
-</table>
-
-</details>
 
 ### Why is this useful?
 
