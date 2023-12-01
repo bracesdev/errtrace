@@ -1,5 +1,7 @@
 # errtrace
 
+*What if every function added its location to returned errors?*
+
 ![errtrace logo](assets/logo.png)
 
 [![CI](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml/badge.svg)](https://github.com/bracesdev/errtrace/actions/workflows/ci.yml)
