@@ -11,7 +11,7 @@ func GetCaller() uintptr {
 		1 // frame for our caller, which should be errtrace.Wrap
 
 	var callers [1]uintptr
-	n := runtime.Callers(3, callers[:]) // skip getcallerpc + caller
+	n := runtime.Callers(skip, callers[:]) // skip getcallerpc + caller
 	if n == 0 {
 		return 0
 	}
