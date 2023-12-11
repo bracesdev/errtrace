@@ -32,7 +32,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
 
@@ -63,7 +63,7 @@ jobs:
     - uses: actions/checkout@v4
       name: Check out repository
 
-    - uses: actions/setup-go@v4
+    - uses: actions/setup-go@v5
       name: Set up Go
       with:
         # Use the Go version specified in the go.mod for linting.
