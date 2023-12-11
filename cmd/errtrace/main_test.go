@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
-	"io"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"braces.dev/errtrace/internal/diff"
@@ -73,7 +75,7 @@ func testGolden(t *testing.T, file string) {
 		var out bytes.Buffer
 		exitCode := (&mainCmd{
 			Stdout: &out,
-			Stderr: io.Discard,
+			Stderr: testWriter{t},
 		}).Run([]string{"-l", srcPath})
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -131,7 +133,7 @@ func testGolden(t *testing.T, file string) {
 	t.Run("idempotent", func(t *testing.T) {
 		var got bytes.Buffer
 		exitCode := (&mainCmd{
-			Stderr: io.Discard,
+			Stderr: testWriter{t},
 			Stdout: &got,
 		}).Run([]string{srcPath})
 
@@ -144,6 +146,131 @@ func testGolden(t *testing.T, file string) {
 			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff.Lines(want, got)))
 		}
 	})
+
+	// Create a Go package with the source file,
+	// and run errtrace on the package.
+	t.Run("package", func(t *testing.T) {
+		dir := t.TempDir()
+
+		file := filepath.Join(dir, filepath.Base(file))
+		if err := os.WriteFile(file, giveSrc, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		gomod := filepath.Join(dir, "go.mod")
+		pkgdir := strings.TrimSuffix(filepath.Base(file), ".go")
+		importPath := path.Join("example.com/test", pkgdir)
+		if err := os.WriteFile(gomod, []byte(fmt.Sprintf("module %s\ngo 1.20\n", importPath)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		restore := chdir(t, dir)
+		var stderr bytes.Buffer
+		exitCode := (&mainCmd{
+			Stderr: &stderr,
+			Stdout: testWriter{t},
+		}).Run([]string{"-format=never", "-tags=ignore", "-w", "./..."})
+		if want := 0; exitCode != want {
+			t.Errorf("exit code = %d, want %d", exitCode, want)
+		}
+		restore()
+
+		gotSrc, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if want, got := string(wantSrc), string(gotSrc); got != want {
+			t.Errorf("want output:\n%s\ngot:\n%s\ndiff:\n%s", indent(want), indent(got), indent(diff.Lines(want, got)))
+		}
+
+		// Check that the log messages match.
+		gotLogs, err := parseLogOutput(file, stderr.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if diff := diff.Diff(wantLogs, gotLogs); diff != "" {
+			t.Errorf("log messages differ:\n%s", indent(diff))
+		}
+	})
+}
+
+func TestParseMainParams(t *testing.T) {
+	tests := []struct {
+		name    string
+		give    []string
+		want    mainParams
+		wantErr []string // non-empty if we expect an error
+	}{
+		{
+			name: "stdin",
+			want: mainParams{
+				Patterns: []string{"-"},
+			},
+		},
+		{
+			name: "tags",
+			give: []string{"-tags=foo, bar ,,baz ", "./..."},
+			want: mainParams{
+				Tags:     []string{"foo", "bar", "baz"},
+				Patterns: []string{"./..."},
+			},
+		},
+		{
+			name: "errtrace tag",
+			give: []string{"-tags=errtrace", "./..."},
+			want: mainParams{
+				// Tags: empty because errtrace is always added.
+				Patterns: []string{"./..."},
+			},
+		},
+		{
+			name:    "errtrace optout",
+			give:    []string{"-tags=foo,!errtrace,bar", "./..."},
+			wantErr: []string{`tag "errtrace" is always set`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got mainParams
+			err := got.Parse(testWriter{t}, tt.give)
+
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+
+				for _, want := range tt.wantErr {
+					if got := err.Error(); !strings.Contains(got, want) {
+						t.Errorf("error %q does not contain %q", got, want)
+					}
+				}
+
+				return
+			}
+
+			if want, got := tt.want, got; !reflect.DeepEqual(want, got) {
+				t.Errorf("got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestCLIParseError(t *testing.T) {
+	var stderr bytes.Buffer
+	exitCode := (&mainCmd{
+		Stderr: &stderr,
+		Stdout: testWriter{t},
+	}).Run([]string{"-tags"})
+	if want := 1; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	if want, got := "flag needs an argument", stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
 }
 
 func TestParseFormatFlag(t *testing.T) {
@@ -181,7 +308,7 @@ func TestParseFormatFlag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			flag := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
-			flag.SetOutput(io.Discard)
+			flag.SetOutput(testWriter{t})
 
 			var got format
 			flag.Var(&got, "format", "")
@@ -198,7 +325,7 @@ func TestParseFormatFlag(t *testing.T) {
 
 func TestFormatFlagError(t *testing.T) {
 	flag := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
-	flag.SetOutput(io.Discard)
+	flag.SetOutput(testWriter{t})
 
 	var got format
 	flag.Var(&got, "format", "")
@@ -301,8 +428,8 @@ func TestFormatAuto(t *testing.T) {
 		}
 
 		exitCode := (&mainCmd{
-			Stdout: io.Discard,
-			Stderr: io.Discard,
+			Stdout: testWriter{t},
+			Stderr: testWriter{t},
 		}).Run([]string{"-w", srcPath})
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -327,7 +454,7 @@ func TestFormatAuto(t *testing.T) {
 		var out bytes.Buffer
 		exitCode := (&mainCmd{
 			Stdout: &out,
-			Stderr: io.Discard,
+			Stderr: testWriter{t},
 		}).Run([]string{srcPath})
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -343,7 +470,7 @@ func TestFormatAuto(t *testing.T) {
 		exitCode := (&mainCmd{
 			Stdin:  strings.NewReader(give),
 			Stdout: &out,
-			Stderr: io.Discard,
+			Stderr: testWriter{t},
 		}).Run(nil /* args */) // empty args implies stdin
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -366,7 +493,7 @@ func TestFormatAuto(t *testing.T) {
 		if want, got := "", out.String(); want != got {
 			t.Errorf("stdout = %q, want %q", got, want)
 		}
-		if want, got := "-:can't use -w with stdin\n", err.String(); want != got {
+		if want, got := "stdin:can't use -w with stdin\n", err.String(); want != got {
 			t.Errorf("stderr = %q, want %q", got, want)
 		}
 	})
@@ -404,7 +531,7 @@ func TestListFlag(t *testing.T) {
 	var out bytes.Buffer
 	exitCode := (&mainCmd{
 		Stdout: &out,
-		Stderr: io.Discard,
+		Stderr: testWriter{t},
 	}).Run([]string{"-l", uninstrumented, instrumented})
 	if want := 0; exitCode != want {
 		t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -437,6 +564,232 @@ func _() {
 
 	if want := []int{3, 5, 6}; !reflect.DeepEqual(want, got) {
 		t.Errorf("got: %v\nwant: %v\ndiff:\n%s", got, want, diff.Diff(want, got))
+	}
+}
+
+func TestExpandPatterns(t *testing.T) {
+	dir := t.TempDir()
+
+	// Temporary directories on macOS are symlinked to /private/var/folders/...
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files := map[string]string{
+		"go.mod":                         "module example.com/foo\n",
+		"top.go":                         "package foo\n",
+		"top_test.go":                    "package foo\n",
+		"sub/sub.go":                     "package sub\n",
+		"sub/sub_test.go":                "package sub\n",
+		"sub/sub_ext_test.go":            "package sub_test\n",
+		"testdata/ignored_by_default.go": "package testdata\n",
+		"tagged.go":                      "//go:build mytag\npackage foo\n",
+		"tagged_test.go":                 "//go:build mytag\npackage foo\n",
+		"optout.go":                      "//go:build !errtrace\npackage foo\n",
+	}
+
+	for name, src := range files {
+		dst := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(dst, []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name string
+		tags []string
+		args []string
+		want []string
+	}{
+		{
+			name: "stdin",
+			args: []string{"-"},
+			want: []string{"-"},
+		},
+		{
+			name: "all",
+			args: []string{"./..."},
+			want: []string{
+				"top.go",
+				"top_test.go",
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+			},
+		},
+		{
+			name: "all with tags",
+			tags: []string{"mytag"},
+			args: []string{"./..."},
+			want: []string{
+				"top.go",
+				"top_test.go",
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+				"tagged.go",
+				"tagged_test.go",
+			},
+		},
+		{
+			name: "relative subpackage",
+			args: []string{"./sub"},
+			want: []string{
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+			},
+		},
+		{
+			name: "absolute subpackage",
+			args: []string{"example.com/foo/sub/..."},
+			want: []string{
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+			},
+		},
+		{
+			name: "relative file",
+			args: []string{"./sub/sub.go"},
+			want: []string{
+				"sub/sub.go",
+			},
+		},
+		{
+			name: "file and pattern",
+			args: []string{
+				"testdata/ignored_by_default.go",
+				"./sub/...",
+			},
+			want: []string{
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+				"testdata/ignored_by_default.go",
+			},
+		},
+		{
+			name: "file and pattern with tags",
+			tags: []string{"mytag"},
+			args: []string{"./...", "testdata/ignored_by_default.go"},
+			want: []string{
+				"top.go",
+				"top_test.go",
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+				"tagged.go",
+				"tagged_test.go",
+				"testdata/ignored_by_default.go",
+			},
+		},
+		{
+			name: "include opt-out explicitly",
+			args: []string{"./...", "optout.go"},
+			want: []string{
+				"top.go",
+				"top_test.go",
+				"sub/sub.go",
+				"sub/sub_test.go",
+				"sub/sub_ext_test.go",
+				"optout.go",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chdir(t, dir)
+
+			got, err := expandPatterns(tt.tags, tt.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for i, p := range got {
+				if filepath.IsAbs(p) {
+					p, err = filepath.Rel(dir, p)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				// Normalize slashes for cross-platform tests.
+				got[i] = path.Clean(filepath.ToSlash(p))
+			}
+
+			sort.Strings(got)
+			sort.Strings(tt.want)
+
+			if !reflect.DeepEqual(tt.want, got) {
+				t.Errorf("got: %v\nwant: %v\ndiff:\n%s", got, tt.want, diff.Diff(tt.want, got))
+			}
+		})
+	}
+}
+
+func TestExpandPatternsErrors(t *testing.T) {
+	var stderr bytes.Buffer
+	exitCode := (&mainCmd{
+		Stderr: &stderr,
+		Stdout: testWriter{t},
+	}).Run([]string{"["})
+	if want := 1; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	if want, got := "malformed import path", stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
+func TestGoListFilesCommandError(t *testing.T) {
+	defer func(oldExecCommand func(string, ...string) *exec.Cmd) {
+		_execCommand = oldExecCommand
+	}(_execCommand)
+	_execCommand = func(string, ...string) *exec.Cmd {
+		return exec.Command("false")
+	}
+
+	var stderr bytes.Buffer
+	exitCode := (&mainCmd{
+		Stderr: &stderr,
+		Stdout: testWriter{t},
+	}).Run([]string{"./..."})
+	if want := 1; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	if want, got := "go list: exit status 1", stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
+func TestGoListFilesBadJSON(t *testing.T) {
+	defer func(oldExecCommand func(string, ...string) *exec.Cmd) {
+		_execCommand = oldExecCommand
+	}(_execCommand)
+	_execCommand = func(string, ...string) *exec.Cmd {
+		return exec.Command("echo", "bad json")
+	}
+
+	var stderr bytes.Buffer
+	exitCode := (&mainCmd{
+		Stderr: &stderr,
+		Stdout: testWriter{t},
+	}).Run([]string{"./..."})
+	if want := 1; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	if want, got := "go list: decode", stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
 	}
 }
 
@@ -524,4 +877,37 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 	}
 
 	return logs, nil
+}
+
+func chdir(t testing.TB, dir string) (restore func()) {
+	t.Helper()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var once sync.Once
+	restore = func() {
+		once.Do(func() {
+			if err := os.Chdir(cwd); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
+	t.Cleanup(restore)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	return restore
+}
+
+type testWriter struct{ T testing.TB }
+
+func (w testWriter) Write(p []byte) (int, error) {
+	for _, line := range bytes.Split(p, []byte{'\n'}) {
+		w.T.Logf("%s", line)
+	}
+	return len(p), nil
 }

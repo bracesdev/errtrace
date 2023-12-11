@@ -8,9 +8,15 @@
 //
 // # Usage
 //
-//	errtrace [options] <source files>
+//	errtrace [options] <source files | patterns>
 //
-// This will transform the source files and write them to the standard output.
+// This will transform source files and write them to the standard output.
+//
+// If instead of source files, Go package patterns are given,
+// errtrace will transform all the files that match those patterns.
+// For example, 'errtrace ./...' will transform all files in the current
+// package and all subpackages.
+//
 // Use the following flags to control the output:
 //
 //	-format
@@ -18,6 +24,9 @@
 //	      auto is the default and will format if the output is being written to a file.
 //	-w    write result to the given source files instead of stdout.
 //	-l    list files that would be modified without making any changes.
+//	-tags tag1,tag2,...
+//	      a list of build tags to consider when looking for files
+//	      matching patterns. This is passed directly to 'go list'.
 package main
 
 // TODO
@@ -25,6 +34,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -34,11 +44,15 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+const _errtraceTag = "errtrace"
 
 func main() {
 	cmd := &mainCmd{
@@ -50,10 +64,11 @@ func main() {
 }
 
 type mainParams struct {
-	Write  bool     // -w
-	List   bool     // -l
-	Format format   // -format
-	Files  []string // list of files to process
+	Write    bool     // -w
+	List     bool     // -l
+	Format   format   // -format
+	Tags     []string // -tags
+	Patterns []string // list of files to process
 }
 
 func (p *mainParams) shouldFormat() bool {
@@ -73,7 +88,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	flag := flag.NewFlagSet("errtrace", flag.ContinueOnError)
 	flag.SetOutput(w)
 	flag.Usage = func() {
-		fmt.Fprintln(w, "usage: errtrace [options] <source files>")
+		fmt.Fprintln(w, "usage: errtrace [options] <source files | patterns>")
 		flag.PrintDefaults()
 	}
 
@@ -83,16 +98,35 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		"write result to the given source files instead of stdout.")
 	flag.BoolVar(&p.List, "l", false,
 		"list files that would be modified without making any changes.")
+	flag.Func("tags",
+		"a comma-separated list of build tags to consider when looking for files matching patterns.\n"+
+			"The 'errtrace' build tag is always set.\n",
+		func(s string) error {
+			for _, tag := range strings.Split(s, ",") {
+				tag = strings.TrimSpace(tag)
+				switch tag {
+				case "":
+					continue
+				case _errtraceTag:
+					continue // always set
+				case "!" + _errtraceTag:
+					return fmt.Errorf("tag %q is always set", _errtraceTag)
+				}
+				p.Tags = append(p.Tags, tag)
+			}
+			return nil
+		})
+
 	// TODO: toolexec mode
 
 	if err := flag.Parse(args); err != nil {
 		return err
 	}
 
-	p.Files = flag.Args()
-	if len(p.Files) == 0 {
+	p.Patterns = flag.Args()
+	if len(p.Patterns) == 0 {
 		// Read file from stdin when there's no args, similar to gofmt.
-		p.Files = []string{"-"}
+		p.Patterns = []string{"-"}
 	}
 
 	return nil
@@ -173,15 +207,39 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 		return 1
 	}
 
-	for _, file := range p.Files {
+	files, err := expandPatterns(p.Tags, p.Patterns)
+	if err != nil {
+		cmd.log.Println("errtrace:", err)
+		return 1
+	}
+
+	// Paths will be printed relative to CWD.
+	// Paths outside it will be printed as-is.
+	var workDir string
+	if wd, err := os.Getwd(); err == nil {
+		workDir = wd + string(filepath.Separator)
+	}
+
+	for _, file := range files {
+		display := file
+		if workDir != "" {
+			// Not using filepath.Rel
+			// because we don't want any ".."s in the path.
+			display = strings.TrimPrefix(file, workDir)
+		}
+		if display == "-" {
+			display = "stdin"
+		}
+
 		req := fileRequest{
 			Format:   p.shouldFormat(),
 			Write:    p.Write,
 			List:     p.List,
-			Filename: file,
+			Filename: display,
+			Filepath: file,
 		}
 		if err := cmd.processFile(req); err != nil {
-			cmd.log.Printf("%s:%s", file, err)
+			cmd.log.Printf("%s:%s", display, err)
 			exitCode = 1
 		}
 	}
@@ -189,11 +247,97 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 	return exitCode
 }
 
+// expandPatterns turns the given list of patterns and files
+// into a list of paths to files.
+//
+// Arguments that are already files are returned as-is.
+// Arguments that are patterns are expanded using 'go list'.
+// As a special case for stdin, "-" is returned as-is.
+func expandPatterns(tags, args []string) ([]string, error) {
+	var files, patterns []string
+	for _, arg := range args {
+		if arg == "-" {
+			files = append(files, arg)
+			continue
+		}
+
+		if info, err := os.Stat(arg); err == nil && !info.IsDir() {
+			files = append(files, arg)
+			continue
+		}
+
+		patterns = append(patterns, arg)
+	}
+
+	if len(patterns) > 0 {
+		pkgFiles, err := goListFiles(tags, patterns)
+		if err != nil {
+			return nil, fmt.Errorf("go list: %w", err)
+		}
+
+		files = append(files, pkgFiles...)
+	}
+
+	return files, nil
+}
+
+var _execCommand = exec.Command
+
+func goListFiles(tags, patterns []string) (files []string, err error) {
+	args := []string{
+		"list", "-find", "-json",
+		"-tags", strings.Join(append(tags, _errtraceTag), ","),
+	}
+	args = append(args, patterns...)
+
+	var stderr bytes.Buffer
+	cmd := _execCommand("go", args...)
+	cmd.Stderr = &stderr
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("pipe stdout: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start: %w", err)
+	}
+
+	dec := json.NewDecoder(stdout)
+	for dec.More() {
+		var pkg struct {
+			Dir          string
+			GoFiles      []string
+			TestGoFiles  []string
+			XTestGoFiles []string
+		}
+		if err := dec.Decode(&pkg); err != nil {
+			return nil, fmt.Errorf("decode: %w", err)
+		}
+
+		pkgFiles := make([]string, 0, len(pkg.GoFiles)+len(pkg.TestGoFiles)+len(pkg.XTestGoFiles))
+		pkgFiles = append(pkgFiles, pkg.GoFiles...)
+		pkgFiles = append(pkgFiles, pkg.TestGoFiles...)
+		pkgFiles = append(pkgFiles, pkg.XTestGoFiles...)
+		for _, file := range pkgFiles {
+			files = append(files, filepath.Join(pkg.Dir, file))
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("%w\n%s", err, stderr.String())
+	}
+
+	return files, nil
+}
+
 type fileRequest struct {
-	Format   bool
-	Write    bool
-	List     bool
-	Filename string
+	Format bool
+	Write  bool
+	List   bool
+
+	Filename string // name displayed to the user
+	Filepath string // actual location on disk, or "-" for stdin
 }
 
 // processFile processes a single file.
@@ -422,14 +566,14 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 }
 
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
-	if r.Filename == "-" {
+	if r.Filepath == "-" {
 		if r.Write {
 			return nil, fmt.Errorf("can't use -w with stdin")
 		}
 		return io.ReadAll(cmd.Stdin)
 	}
 
-	return os.ReadFile(r.Filename)
+	return os.ReadFile(r.Filepath)
 }
 
 type walker struct {

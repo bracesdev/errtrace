@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+### Added
+- cmd/errtrace: Support Go package patterns in addition to file paths.
+  Use `errtrace -w ./...` to transform all files under the current package
+  and its descendants.
+
 ## v0.2.0 - 2023-11-30
 
 This release contains minor improvements to the errtrace code transformer
