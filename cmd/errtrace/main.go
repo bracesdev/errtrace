@@ -93,6 +93,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	if len(p.Files) == 0 {
 		// Read file from stdin when there's no args, similar to gofmt.
 		p.Files = []string{"-"}
+		fmt.Fprintln(w, "reading from stdin; use '-' to hide this message and '-h' for help")
 	}
 
 	return nil

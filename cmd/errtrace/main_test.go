@@ -359,7 +359,7 @@ func TestFormatAuto(t *testing.T) {
 			Stdin:  strings.NewReader("unused"),
 			Stdout: &out,
 			Stderr: &err,
-		}).Run([]string{"-w"})
+		}).Run([]string{"-w", "-"})
 		if want := 1; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
 		}
