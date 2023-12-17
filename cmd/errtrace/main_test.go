@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"braces.dev/errtrace/internal/diff"
 )
@@ -437,6 +438,67 @@ func _() {
 
 	if want := []int{3, 5, 6}; !reflect.DeepEqual(want, got) {
 		t.Errorf("got: %v\nwant: %v\ndiff:\n%s", got, want, diff.Diff(want, got))
+	}
+}
+
+func TestStdinNoInputMessage(t *testing.T) {
+	// Verify that if there's no input on implicit stdin,
+	// we print a message to stderr to help the user.
+	defer func(old time.Duration) { _stdinWait = old }(_stdinWait)
+	_stdinWait = 10 * time.Millisecond // make the test run faster
+
+	tests := []struct {
+		name       string
+		delay      time.Duration // before writing
+		wantStderr string
+	}{
+		{
+			name:  "no delay",
+			delay: 0,
+		},
+		{
+			name:       "delay",
+			delay:      20 * time.Millisecond,
+			wantStderr: "reading from stdin; use '-h' for help\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// mainCmd.Run is blocking so this has to be in a goroutine.
+			stdin, stdinw := io.Pipe()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+
+				if tt.delay > 0 {
+					time.Sleep(20 * time.Millisecond)
+				}
+				if _, err := io.WriteString(stdinw, "package foo\n"); err != nil {
+					t.Error(err)
+				}
+
+				if err := stdinw.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			defer func() { <-done }()
+
+			var stderr bytes.Buffer
+			exitCode := (&mainCmd{
+				Stdin:  stdin,
+				Stdout: io.Discard,
+				Stderr: &stderr,
+			}).Run(nil /* args */) // empty args implies stdin
+
+			if want := 0; exitCode != want {
+				t.Errorf("exit code = %d, want %d", exitCode, want)
+			}
+
+			if want, got := tt.wantStderr, stderr.String(); got != want {
+				t.Errorf("stderr = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
