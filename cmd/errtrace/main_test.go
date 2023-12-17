@@ -169,7 +169,7 @@ func testGolden(t *testing.T, file string) {
 		exitCode := (&mainCmd{
 			Stderr: &stderr,
 			Stdout: testWriter{t},
-		}).Run([]string{"-format=never", "-tags=ignore", "-w", "./..."})
+		}).Run([]string{"-format=never", "-w", "."})
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
 		}
@@ -209,27 +209,6 @@ func TestParseMainParams(t *testing.T) {
 				Patterns: []string{"-"},
 			},
 		},
-		{
-			name: "tags",
-			give: []string{"-tags=foo, bar ,,baz ", "./..."},
-			want: mainParams{
-				Tags:     []string{"foo", "bar", "baz"},
-				Patterns: []string{"./..."},
-			},
-		},
-		{
-			name: "errtrace tag",
-			give: []string{"-tags=errtrace", "./..."},
-			want: mainParams{
-				// Tags: empty because errtrace is always added.
-				Patterns: []string{"./..."},
-			},
-		},
-		{
-			name:    "errtrace optout",
-			give:    []string{"-tags=foo,!errtrace,bar", "./..."},
-			wantErr: []string{`tag "errtrace" is always set`},
-		},
 	}
 
 	for _, tt := range tests {
@@ -255,21 +234,6 @@ func TestParseMainParams(t *testing.T) {
 				t.Errorf("got %v, want %v", got, want)
 			}
 		})
-	}
-}
-
-func TestCLIParseError(t *testing.T) {
-	var stderr bytes.Buffer
-	exitCode := (&mainCmd{
-		Stderr: &stderr,
-		Stdout: testWriter{t},
-	}).Run([]string{"-tags"})
-	if want := 1; exitCode != want {
-		t.Errorf("exit code = %d, want %d", exitCode, want)
-	}
-
-	if want, got := "flag needs an argument", stderr.String(); !strings.Contains(got, want) {
-		t.Errorf("stderr = %q, want %q", got, want)
 	}
 }
 
@@ -324,18 +288,17 @@ func TestParseFormatFlag(t *testing.T) {
 }
 
 func TestFormatFlagError(t *testing.T) {
-	flag := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
-	flag.SetOutput(testWriter{t})
-
-	var got format
-	flag.Var(&got, "format", "")
-	err := flag.Parse([]string{"-format=unknown"})
-	if err == nil {
-		t.Fatal("no error")
+	var stderr bytes.Buffer
+	exitCode := (&mainCmd{
+		Stderr: &stderr,
+		Stdout: testWriter{t},
+	}).Run([]string{"-format=unknown"})
+	if want := 1; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
 	}
 
-	if want, got := `invalid format "unknown"`, err.Error(); !strings.Contains(got, want) {
-		t.Errorf("error %q does not contain %q", got, want)
+	if want, got := `invalid format "unknown"`, stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
 	}
 }
 
@@ -586,7 +549,6 @@ func TestExpandPatterns(t *testing.T) {
 		"testdata/ignored_by_default.go": "package testdata\n",
 		"tagged.go":                      "//go:build mytag\npackage foo\n",
 		"tagged_test.go":                 "//go:build mytag\npackage foo\n",
-		"optout.go":                      "//go:build !errtrace\npackage foo\n",
 	}
 
 	for name, src := range files {
@@ -602,7 +564,6 @@ func TestExpandPatterns(t *testing.T) {
 
 	tests := []struct {
 		name string
-		tags []string
 		args []string
 		want []string
 	}{
@@ -613,18 +574,6 @@ func TestExpandPatterns(t *testing.T) {
 		},
 		{
 			name: "all",
-			args: []string{"./..."},
-			want: []string{
-				"top.go",
-				"top_test.go",
-				"sub/sub.go",
-				"sub/sub_test.go",
-				"sub/sub_ext_test.go",
-			},
-		},
-		{
-			name: "all with tags",
-			tags: []string{"mytag"},
 			args: []string{"./..."},
 			want: []string{
 				"top.go",
@@ -676,7 +625,6 @@ func TestExpandPatterns(t *testing.T) {
 		},
 		{
 			name: "file and pattern with tags",
-			tags: []string{"mytag"},
 			args: []string{"./...", "testdata/ignored_by_default.go"},
 			want: []string{
 				"top.go",
@@ -689,25 +637,13 @@ func TestExpandPatterns(t *testing.T) {
 				"testdata/ignored_by_default.go",
 			},
 		},
-		{
-			name: "include opt-out explicitly",
-			args: []string{"./...", "optout.go"},
-			want: []string{
-				"top.go",
-				"top_test.go",
-				"sub/sub.go",
-				"sub/sub_test.go",
-				"sub/sub_ext_test.go",
-				"optout.go",
-			},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chdir(t, dir)
 
-			got, err := expandPatterns(tt.tags, tt.args)
+			got, err := expandPatterns(tt.args)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -734,21 +670,6 @@ func TestExpandPatterns(t *testing.T) {
 	}
 }
 
-func TestExpandPatternsErrors(t *testing.T) {
-	var stderr bytes.Buffer
-	exitCode := (&mainCmd{
-		Stderr: &stderr,
-		Stdout: testWriter{t},
-	}).Run([]string{"["})
-	if want := 1; exitCode != want {
-		t.Errorf("exit code = %d, want %d", exitCode, want)
-	}
-
-	if want, got := "malformed import path", stderr.String(); !strings.Contains(got, want) {
-		t.Errorf("stderr = %q, want %q", got, want)
-	}
-}
-
 func TestGoListFilesCommandError(t *testing.T) {
 	defer func(oldExecCommand func(string, ...string) *exec.Cmd) {
 		_execCommand = oldExecCommand
@@ -767,28 +688,6 @@ func TestGoListFilesCommandError(t *testing.T) {
 	}
 
 	if want, got := "go list: exit status 1", stderr.String(); !strings.Contains(got, want) {
-		t.Errorf("stderr = %q, want %q", got, want)
-	}
-}
-
-func TestGoListFilesBadJSON(t *testing.T) {
-	defer func(oldExecCommand func(string, ...string) *exec.Cmd) {
-		_execCommand = oldExecCommand
-	}(_execCommand)
-	_execCommand = func(string, ...string) *exec.Cmd {
-		return exec.Command("echo", "bad json")
-	}
-
-	var stderr bytes.Buffer
-	exitCode := (&mainCmd{
-		Stderr: &stderr,
-		Stdout: testWriter{t},
-	}).Run([]string{"./..."})
-	if want := 1; exitCode != want {
-		t.Errorf("exit code = %d, want %d", exitCode, want)
-	}
-
-	if want, got := "go list: decode", stderr.String(); !strings.Contains(got, want) {
 		t.Errorf("stderr = %q, want %q", got, want)
 	}
 }

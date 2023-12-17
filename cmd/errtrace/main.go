@@ -24,17 +24,14 @@
 //	      auto is the default and will format if the output is being written to a file.
 //	-w    write result to the given source files instead of stdout.
 //	-l    list files that would be modified without making any changes.
-//	-tags tag1,tag2,...
-//	      a list of build tags to consider when looking for files
-//	      matching patterns. This is passed directly to 'go list'.
 package main
 
 // TODO
 //   - -toolexec: run as a tool executor, fit for use with 'go build -toolexec'
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -52,8 +49,6 @@ import (
 	"strings"
 )
 
-const _errtraceTag = "errtrace"
-
 func main() {
 	cmd := &mainCmd{
 		Stdin:  os.Stdin,
@@ -67,7 +62,6 @@ type mainParams struct {
 	Write    bool     // -w
 	List     bool     // -l
 	Format   format   // -format
-	Tags     []string // -tags
 	Patterns []string // list of files to process
 }
 
@@ -98,24 +92,6 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		"write result to the given source files instead of stdout.")
 	flag.BoolVar(&p.List, "l", false,
 		"list files that would be modified without making any changes.")
-	flag.Func("tags",
-		"a comma-separated list of build tags to consider when looking for files matching patterns.\n"+
-			"The 'errtrace' build tag is always set.\n",
-		func(s string) error {
-			for _, tag := range strings.Split(s, ",") {
-				tag = strings.TrimSpace(tag)
-				switch tag {
-				case "":
-					continue
-				case _errtraceTag:
-					continue // always set
-				case "!" + _errtraceTag:
-					return fmt.Errorf("tag %q is always set", _errtraceTag)
-				}
-				p.Tags = append(p.Tags, tag)
-			}
-			return nil
-		})
 
 	// TODO: toolexec mode
 
@@ -207,7 +183,7 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 		return 1
 	}
 
-	files, err := expandPatterns(p.Tags, p.Patterns)
+	files, err := expandPatterns(p.Patterns)
 	if err != nil {
 		cmd.log.Println("errtrace:", err)
 		return 1
@@ -253,7 +229,7 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 // Arguments that are already files are returned as-is.
 // Arguments that are patterns are expanded using 'go list'.
 // As a special case for stdin, "-" is returned as-is.
-func expandPatterns(tags, args []string) ([]string, error) {
+func expandPatterns(args []string) ([]string, error) {
 	var files, patterns []string
 	for _, arg := range args {
 		if arg == "-" {
@@ -270,7 +246,7 @@ func expandPatterns(tags, args []string) ([]string, error) {
 	}
 
 	if len(patterns) > 0 {
-		pkgFiles, err := goListFiles(tags, patterns)
+		pkgFiles, err := goListFiles(patterns)
 		if err != nil {
 			return nil, fmt.Errorf("go list: %w", err)
 		}
@@ -283,11 +259,16 @@ func expandPatterns(tags, args []string) ([]string, error) {
 
 var _execCommand = exec.Command
 
-func goListFiles(tags, patterns []string) (files []string, err error) {
-	args := []string{
-		"list", "-find", "-json",
-		"-tags", strings.Join(append(tags, _errtraceTag), ","),
-	}
+func goListFiles(patterns []string) (files []string, err error) {
+	// If we use "go list" to find the files,
+	// it'll only report files that match the default build constraints.
+	//
+	// We want all files so we just request the package directories,
+	// and then walk them ourselves to find all the files.
+	//
+	// The -e flag makes 'go list' include erroneous packages,
+	// e.g. those with all files excluded by build constraints.
+	args := []string{"list", "-find", "-e", "-f", "{{.Dir}}"}
 	args = append(args, patterns...)
 
 	var stderr bytes.Buffer
@@ -303,25 +284,25 @@ func goListFiles(tags, patterns []string) (files []string, err error) {
 		return nil, fmt.Errorf("start: %w", err)
 	}
 
-	dec := json.NewDecoder(stdout)
-	for dec.More() {
-		var pkg struct {
-			Dir          string
-			GoFiles      []string
-			TestGoFiles  []string
-			XTestGoFiles []string
-		}
-		if err := dec.Decode(&pkg); err != nil {
-			return nil, fmt.Errorf("decode: %w", err)
+	scan := bufio.NewScanner(stdout)
+	for scan.Scan() {
+		dir := scan.Text()
+		infos, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, fmt.Errorf("read dir %q: %w", dir, err)
 		}
 
-		pkgFiles := make([]string, 0, len(pkg.GoFiles)+len(pkg.TestGoFiles)+len(pkg.XTestGoFiles))
-		pkgFiles = append(pkgFiles, pkg.GoFiles...)
-		pkgFiles = append(pkgFiles, pkg.TestGoFiles...)
-		pkgFiles = append(pkgFiles, pkg.XTestGoFiles...)
-		for _, file := range pkgFiles {
-			files = append(files, filepath.Join(pkg.Dir, file))
+		for _, info := range infos {
+			if info.IsDir() || !strings.HasSuffix(info.Name(), ".go") {
+				continue
+			}
+
+			files = append(files, filepath.Join(dir, info.Name()))
 		}
+	}
+
+	if err := scan.Err(); err != nil {
+		return nil, fmt.Errorf("scan stdout: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
