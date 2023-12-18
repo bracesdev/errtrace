@@ -440,17 +440,18 @@ func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 		return nil, fmt.Errorf("can't use -w with stdin")
 	}
 
+	if !r.ImplicitStdin {
+		return io.ReadAll(cmd.Stdin)
+	}
+
 	// If we're reading from stdin because there were no other arguments,
 	// wait a short time for the first read.
 	// If there's nothing, print a warning and continue waiting.
 	firstRead := make(chan struct{})
 	go func(firstRead <-chan struct{}) {
-		t := time.NewTimer(_stdinWait)
-		defer t.Stop()
-
 		select {
 		case <-firstRead:
-		case <-t.C:
+		case <-time.After(_stdinWait):
 			cmd.log.Println("reading from stdin; use '-h' for help")
 		}
 	}(firstRead)

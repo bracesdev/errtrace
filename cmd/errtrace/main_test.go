@@ -450,6 +450,7 @@ func TestStdinNoInputMessage(t *testing.T) {
 	tests := []struct {
 		name       string
 		delay      time.Duration // before writing
+		args       []string
 		wantStderr string
 	}{
 		{
@@ -460,6 +461,11 @@ func TestStdinNoInputMessage(t *testing.T) {
 			name:       "delay",
 			delay:      20 * time.Millisecond,
 			wantStderr: "reading from stdin; use '-h' for help\n",
+		},
+		{
+			name:  "explicit stdin with delay",
+			args:  []string{"-"},
+			delay: 20 * time.Millisecond,
 		},
 	}
 
@@ -489,7 +495,7 @@ func TestStdinNoInputMessage(t *testing.T) {
 				Stdin:  stdin,
 				Stdout: io.Discard,
 				Stderr: &stderr,
-			}).Run(nil /* args */) // empty args implies stdin
+			}).Run(tt.args)
 
 			if want := 0; exitCode != want {
 				t.Errorf("exit code = %d, want %d", exitCode, want)
