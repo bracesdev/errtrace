@@ -260,14 +260,10 @@ func expandPatterns(args []string) ([]string, error) {
 var _execCommand = exec.Command
 
 func goListFiles(patterns []string) (files []string, err error) {
-	// If we use "go list" to find the files,
-	// it'll only report files that match the default build constraints.
-	//
-	// We want all files so we just request the package directories,
-	// and then walk them ourselves to find all the files.
-	//
-	// The -e flag makes 'go list' include erroneous packages,
-	// e.g. those with all files excluded by build constraints.
+	// The -e flag makes 'go list' include erroneous packages.
+	// This will even include packages that have all files excluded
+	// by build constraints if explicitly requested.
+	// (with "path/to/pkg" instead of "./...")
 	args := []string{"list", "-find", "-e", "-json"}
 	args = append(args, patterns...)
 
@@ -310,7 +306,9 @@ func goListFiles(patterns []string) (files []string, err error) {
 			pkg.IgnoredOtherFiles,
 		} {
 			for _, f := range pkgFiles {
-				files = append(files, filepath.Join(pkg.Dir, f))
+				if strings.HasSuffix(f, ".go") {
+					files = append(files, filepath.Join(pkg.Dir, f))
+				}
 			}
 		}
 	}
