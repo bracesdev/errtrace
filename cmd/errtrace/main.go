@@ -30,8 +30,8 @@ package main
 //   - -toolexec: run as a tool executor, fit for use with 'go build -toolexec'
 
 import (
-	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -268,7 +268,7 @@ func goListFiles(patterns []string) (files []string, err error) {
 	//
 	// The -e flag makes 'go list' include erroneous packages,
 	// e.g. those with all files excluded by build constraints.
-	args := []string{"list", "-find", "-e", "-f", "{{.Dir}}"}
+	args := []string{"list", "-find", "-e", "-json"}
 	args = append(args, patterns...)
 
 	var stderr bytes.Buffer
@@ -281,28 +281,38 @@ func goListFiles(patterns []string) (files []string, err error) {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start: %w", err)
+		return nil, fmt.Errorf("start go list: %w", err)
 	}
 
-	scan := bufio.NewScanner(stdout)
-	for scan.Scan() {
-		dir := scan.Text()
-		infos, err := os.ReadDir(dir)
-		if err != nil {
-			return nil, fmt.Errorf("read dir %q: %w", dir, err)
+	type packageInfo struct {
+		Dir               string
+		GoFiles           []string
+		CgoFiles          []string
+		TestGoFiles       []string
+		XTestGoFiles      []string
+		IgnoredGoFiles    []string
+		IgnoredOtherFiles []string
+	}
+
+	decoder := json.NewDecoder(stdout)
+	for decoder.More() {
+		var pkg packageInfo
+		if err := decoder.Decode(&pkg); err != nil {
+			return nil, fmt.Errorf("go list output malformed: %v", err)
 		}
 
-		for _, info := range infos {
-			if info.IsDir() || !strings.HasSuffix(info.Name(), ".go") {
-				continue
+		for _, pkgFiles := range [][]string{
+			pkg.GoFiles,
+			pkg.CgoFiles,
+			pkg.TestGoFiles,
+			pkg.XTestGoFiles,
+			pkg.IgnoredGoFiles,
+			pkg.IgnoredOtherFiles,
+		} {
+			for _, f := range pkgFiles {
+				files = append(files, filepath.Join(pkg.Dir, f))
 			}
-
-			files = append(files, filepath.Join(dir, info.Name()))
 		}
-	}
-
-	if err := scan.Err(); err != nil {
-		return nil, fmt.Errorf("scan stdout: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
