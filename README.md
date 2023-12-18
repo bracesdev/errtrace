@@ -376,11 +376,6 @@ func (*myReader) Read(bs []byte) (int, error) {
 }
 ```
 
-To opt-out an entire file, add `//go:build !errtrace` to the top of the file.
-errtrace will ignore the file by default,
-but if you pass the file path explicitly when invoking errtrace,
-it will still be instrumented.
-
 ## Performance
 
 errtrace is designed to have very low overhead
