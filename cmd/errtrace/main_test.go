@@ -692,6 +692,28 @@ func TestGoListFilesCommandError(t *testing.T) {
 	}
 }
 
+func TestGoListFilesBadJSON(t *testing.T) {
+	defer func(oldExecCommand func(string, ...string) *exec.Cmd) {
+		_execCommand = oldExecCommand
+	}(_execCommand)
+	_execCommand = func(string, ...string) *exec.Cmd {
+		return exec.Command("echo", "bad json")
+	}
+
+	var stderr bytes.Buffer
+	exitCode := (&mainCmd{
+		Stderr: &stderr,
+		Stdout: testWriter{t},
+	}).Run([]string{"./..."})
+	if want := 1; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+
+	if want, got := "go list: output malformed: invalid character 'b'", stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
 func indent(s string) string {
 	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
 }

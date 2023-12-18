@@ -277,11 +277,11 @@ func goListFiles(patterns []string) (files []string, err error) {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("pipe stdout: %w", err)
+		return nil, fmt.Errorf("create stdout pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start go list: %w", err)
+		return nil, fmt.Errorf("start command: %w", err)
 	}
 
 	type packageInfo struct {
@@ -298,7 +298,7 @@ func goListFiles(patterns []string) (files []string, err error) {
 	for decoder.More() {
 		var pkg packageInfo
 		if err := decoder.Decode(&pkg); err != nil {
-			return nil, fmt.Errorf("go list output malformed: %v", err)
+			return nil, fmt.Errorf("output malformed: %v", err)
 		}
 
 		for _, pkgFiles := range [][]string{
