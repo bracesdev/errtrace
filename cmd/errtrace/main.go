@@ -281,13 +281,12 @@ func goListFiles(patterns []string) (files []string, err error) {
 	}
 
 	type packageInfo struct {
-		Dir               string
-		GoFiles           []string
-		CgoFiles          []string
-		TestGoFiles       []string
-		XTestGoFiles      []string
-		IgnoredGoFiles    []string
-		IgnoredOtherFiles []string
+		Dir            string
+		GoFiles        []string
+		CgoFiles       []string
+		TestGoFiles    []string
+		XTestGoFiles   []string
+		IgnoredGoFiles []string
 	}
 
 	decoder := json.NewDecoder(stdout)
@@ -303,12 +302,9 @@ func goListFiles(patterns []string) (files []string, err error) {
 			pkg.TestGoFiles,
 			pkg.XTestGoFiles,
 			pkg.IgnoredGoFiles,
-			pkg.IgnoredOtherFiles,
 		} {
 			for _, f := range pkgFiles {
-				if strings.HasSuffix(f, ".go") {
-					files = append(files, filepath.Join(pkg.Dir, f))
-				}
+				files = append(files, filepath.Join(pkg.Dir, f))
 			}
 		}
 	}
