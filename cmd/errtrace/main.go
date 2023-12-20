@@ -25,6 +25,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -38,6 +39,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -54,6 +56,8 @@ type mainParams struct {
 	List   bool     // -l
 	Format format   // -format
 	Files  []string // list of files to process
+
+	ImplicitStdin bool // whether stdin was picked because there were no args
 }
 
 func (p *mainParams) shouldFormat() bool {
@@ -93,6 +97,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	if len(p.Files) == 0 {
 		// Read file from stdin when there's no args, similar to gofmt.
 		p.Files = []string{"-"}
+		p.ImplicitStdin = true
 	}
 
 	return nil
@@ -175,10 +180,11 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 
 	for _, file := range p.Files {
 		req := fileRequest{
-			Format:   p.shouldFormat(),
-			Write:    p.Write,
-			List:     p.List,
-			Filename: file,
+			Format:        p.shouldFormat(),
+			Write:         p.Write,
+			List:          p.List,
+			Filename:      file,
+			ImplicitStdin: p.ImplicitStdin,
 		}
 		if err := cmd.processFile(req); err != nil {
 			cmd.log.Printf("%s:%s", file, err)
@@ -194,6 +200,8 @@ type fileRequest struct {
 	Write    bool
 	List     bool
 	Filename string
+
+	ImplicitStdin bool
 }
 
 // processFile processes a single file.
@@ -421,15 +429,50 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	return err
 }
 
+var _stdinWait = 200 * time.Millisecond
+
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
-	if r.Filename == "-" {
-		if r.Write {
-			return nil, fmt.Errorf("can't use -w with stdin")
-		}
+	if r.Filename != "-" {
+		return os.ReadFile(r.Filename)
+	}
+
+	if r.Write {
+		return nil, fmt.Errorf("can't use -w with stdin")
+	}
+
+	if !r.ImplicitStdin {
 		return io.ReadAll(cmd.Stdin)
 	}
 
-	return os.ReadFile(r.Filename)
+	// If we're reading from stdin because there were no other arguments,
+	// wait a short time for the first read.
+	// If there's nothing, print a warning and continue waiting.
+	firstRead := make(chan struct{})
+	go func(firstRead <-chan struct{}) {
+		select {
+		case <-firstRead:
+		case <-time.After(_stdinWait):
+			cmd.log.Println("reading from stdin; use '-h' for help")
+		}
+	}(firstRead)
+
+	var buff bytes.Buffer
+	bs := make([]byte, 1024)
+	for {
+		n, err := cmd.Stdin.Read(bs)
+		buff.Write(bs[:n])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = nil
+			}
+			return buff.Bytes(), err
+		}
+
+		if firstRead != nil {
+			close(firstRead)
+			firstRead = nil
+		}
+	}
 }
 
 type walker struct {
