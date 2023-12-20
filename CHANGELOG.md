@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Use `errtrace -w ./...` to transform all files under the current package
   and its descendants.
 
+### Changed
+- cmd/errtrace:
+  Print a message when reading from stdin because no arguments were given.
+  Use '-' as the file name to read from stdin without a warning.
+
 ## v0.2.0 - 2023-11-30
 
 This release contains minor improvements to the errtrace code transformer
