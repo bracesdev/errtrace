@@ -42,13 +42,26 @@ jobs:
       if: matrix.arch != 'amd64' && matrix.arch != '386'
       uses: docker/setup-qemu-action@v3
 
+    - name: Enable race detection
+      shell: bash
+      run: |
+        # Only amd64/arm64 support RACE, disable it on all other architectures.
+        case "$GOARCH" in
+          amd64 | arm64 )
+            echo "Enabling data-race detection."
+            ;;
+          * )
+            echo "NO_RACE=1" >> "$GITHUB_ENV"
+            ;;
+        esac
+      env:
+        GOARCH: ${{ matrix.arch }}
+
     - name: Test ${{ matrix.arch }}
       run: make cover
       shell: bash
       env:
         GOARCH: ${{ matrix.arch }}
-        # Only amd64/arm64 support RACE, disable it on all other architectures.
-        NO_RACE: ${{ (matrix.arch == 'amd64' || matrix.arch == 'arm64') && '' || '1' }}
 
     - name: Coverage
       uses: codecov/codecov-action@v3
