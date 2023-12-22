@@ -8,9 +8,15 @@
 //
 // # Usage
 //
-//	errtrace [options] <source files>
+//	errtrace [options] <source files | patterns>
 //
-// This will transform the source files and write them to the standard output.
+// This will transform source files and write them to the standard output.
+//
+// If instead of source files, Go package patterns are given,
+// errtrace will transform all the files that match those patterns.
+// For example, 'errtrace ./...' will transform all files in the current
+// package and all subpackages.
+//
 // Use the following flags to control the output:
 //
 //	-format
@@ -25,6 +31,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -35,6 +42,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -52,10 +61,10 @@ func main() {
 }
 
 type mainParams struct {
-	Write  bool     // -w
-	List   bool     // -l
-	Format format   // -format
-	Files  []string // list of files to process
+	Write    bool     // -w
+	List     bool     // -l
+	Format   format   // -format
+	Patterns []string // list of files to process
 
 	ImplicitStdin bool // whether stdin was picked because there were no args
 }
@@ -77,7 +86,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	flag := flag.NewFlagSet("errtrace", flag.ContinueOnError)
 	flag.SetOutput(w)
 	flag.Usage = func() {
-		fmt.Fprintln(w, "usage: errtrace [options] <source files>")
+		fmt.Fprintln(w, "usage: errtrace [options] <source files | patterns>")
 		flag.PrintDefaults()
 	}
 
@@ -87,16 +96,17 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		"write result to the given source files instead of stdout.")
 	flag.BoolVar(&p.List, "l", false,
 		"list files that would be modified without making any changes.")
+
 	// TODO: toolexec mode
 
 	if err := flag.Parse(args); err != nil {
 		return err
 	}
 
-	p.Files = flag.Args()
-	if len(p.Files) == 0 {
+	p.Patterns = flag.Args()
+	if len(p.Patterns) == 0 {
 		// Read file from stdin when there's no args, similar to gofmt.
-		p.Files = []string{"-"}
+		p.Patterns = []string{"-"}
 		p.ImplicitStdin = true
 	}
 
@@ -178,16 +188,40 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 		return 1
 	}
 
-	for _, file := range p.Files {
+	files, err := expandPatterns(p.Patterns)
+	if err != nil {
+		cmd.log.Println("errtrace:", err)
+		return 1
+	}
+
+	// Paths will be printed relative to CWD.
+	// Paths outside it will be printed as-is.
+	var workDir string
+	if wd, err := os.Getwd(); err == nil {
+		workDir = wd + string(filepath.Separator)
+	}
+
+	for _, file := range files {
+		display := file
+		if workDir != "" {
+			// Not using filepath.Rel
+			// because we don't want any ".."s in the path.
+			display = strings.TrimPrefix(file, workDir)
+		}
+		if display == "-" {
+			display = "stdin"
+		}
+
 		req := fileRequest{
 			Format:        p.shouldFormat(),
 			Write:         p.Write,
 			List:          p.List,
-			Filename:      file,
+			Filename:      display,
+			Filepath:      file,
 			ImplicitStdin: p.ImplicitStdin,
 		}
 		if err := cmd.processFile(req); err != nil {
-			cmd.log.Printf("%s:%s", file, err)
+			cmd.log.Printf("%s:%s", display, err)
 			exitCode = 1
 		}
 	}
@@ -195,11 +229,106 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 	return exitCode
 }
 
+// expandPatterns turns the given list of patterns and files
+// into a list of paths to files.
+//
+// Arguments that are already files are returned as-is.
+// Arguments that are patterns are expanded using 'go list'.
+// As a special case for stdin, "-" is returned as-is.
+func expandPatterns(args []string) ([]string, error) {
+	var files, patterns []string
+	for _, arg := range args {
+		if arg == "-" {
+			files = append(files, arg)
+			continue
+		}
+
+		if info, err := os.Stat(arg); err == nil && !info.IsDir() {
+			files = append(files, arg)
+			continue
+		}
+
+		patterns = append(patterns, arg)
+	}
+
+	if len(patterns) > 0 {
+		pkgFiles, err := goListFiles(patterns)
+		if err != nil {
+			return nil, fmt.Errorf("go list: %w", err)
+		}
+
+		files = append(files, pkgFiles...)
+	}
+
+	return files, nil
+}
+
+var _execCommand = exec.Command
+
+func goListFiles(patterns []string) (files []string, err error) {
+	// The -e flag makes 'go list' include erroneous packages.
+	// This will even include packages that have all files excluded
+	// by build constraints if explicitly requested.
+	// (with "path/to/pkg" instead of "./...")
+	args := []string{"list", "-find", "-e", "-json"}
+	args = append(args, patterns...)
+
+	var stderr bytes.Buffer
+	cmd := _execCommand("go", args...)
+	cmd.Stderr = &stderr
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("create stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start command: %w", err)
+	}
+
+	type packageInfo struct {
+		Dir            string
+		GoFiles        []string
+		CgoFiles       []string
+		TestGoFiles    []string
+		XTestGoFiles   []string
+		IgnoredGoFiles []string
+	}
+
+	decoder := json.NewDecoder(stdout)
+	for decoder.More() {
+		var pkg packageInfo
+		if err := decoder.Decode(&pkg); err != nil {
+			return nil, fmt.Errorf("output malformed: %v", err)
+		}
+
+		for _, pkgFiles := range [][]string{
+			pkg.GoFiles,
+			pkg.CgoFiles,
+			pkg.TestGoFiles,
+			pkg.XTestGoFiles,
+			pkg.IgnoredGoFiles,
+		} {
+			for _, f := range pkgFiles {
+				files = append(files, filepath.Join(pkg.Dir, f))
+			}
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("%w\n%s", err, stderr.String())
+	}
+
+	return files, nil
+}
+
 type fileRequest struct {
-	Format   bool
-	Write    bool
-	List     bool
-	Filename string
+	Format bool
+	Write  bool
+	List   bool
+
+	Filename string // name displayed to the user
+	Filepath string // actual location on disk, or "-" for stdin
 
 	ImplicitStdin bool
 }
@@ -432,7 +561,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 var _stdinWait = 200 * time.Millisecond
 
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
-	if r.Filename != "-" {
+	if r.Filepath != "-" {
 		return os.ReadFile(r.Filename)
 	}
 

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- cmd/errtrace: Support Go package patterns in addition to file paths.
+  Use `errtrace -w ./...` to transform all files under the current package
+  and its descendants.
+
 ### Changed
 - cmd/errtrace:
   Print a message when reading from stdin because no arguments were given.

@@ -140,7 +140,7 @@ Try out errtrace with your own code:
 2. Switch to your Git repository and instrument your code.
 
    ```bash
-   git ls-files -- '*.go' | xargs errtrace -w
+   errtrace -w ./...
    ```
 3. Let `go mod tidy` install the errtrace Go module for you.
 
@@ -335,11 +335,13 @@ Then, run it on your code:
 errtrace -w path/to/file.go path/to/another/file.go
 ```
 
-To run it on all Go files in your project,
-if you use Git, run the following command on a Unix-like system:
+Instead of specifying individual files,
+you can also specify a Go package pattern.
+For example:
 
 ```bash
-git ls-files -- '*.go' | xargs errtrace -w
+errtrace -w example.com/path/to/package
+errtrace -w ./...
 ```
 
 errtrace can be set be setup as a custom formatter in your editor,
