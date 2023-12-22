@@ -579,13 +579,13 @@ func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 	// wait a short time for the first read.
 	// If there's nothing, print a warning and continue waiting.
 	firstRead := make(chan struct{})
-	go func(firstRead <-chan struct{}) {
+	go func(firstRead <-chan struct{}, wait time.Duration) {
 		select {
 		case <-firstRead:
-		case <-time.After(_stdinWait):
+		case <-time.After(wait):
 			cmd.log.Println("reading from stdin; use '-h' for help")
 		}
-	}(firstRead)
+	}(firstRead, _stdinWait)
 
 	var buff bytes.Buffer
 	bs := make([]byte, 1024)

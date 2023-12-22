@@ -768,9 +768,8 @@ func TestStdinNoInputMessage(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			defer func() { <-done }()
 
-			var stderr bytes.Buffer
+			var stderr lockedBuffer
 			exitCode := (&mainCmd{
 				Stdin:  stdin,
 				Stdout: io.Discard,
@@ -780,12 +779,41 @@ func TestStdinNoInputMessage(t *testing.T) {
 			if want := 0; exitCode != want {
 				t.Errorf("exit code = %d, want %d", exitCode, want)
 			}
+			<-done
 
-			if want, got := tt.wantStderr, stderr.String(); got != want {
+			// errtrace's goroutine may still be writing to stderr.
+			// Try a few times before giving up.
+			var gotStderr string
+			for i := 0; i < 10; i++ {
+				gotStderr = stderr.String()
+				if gotStderr != tt.wantStderr {
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+			}
+
+			if want, got := tt.wantStderr, gotStderr; got != want {
 				t.Errorf("stderr = %q, want %q", got, want)
 			}
 		})
 	}
+}
+
+type lockedBuffer struct {
+	mu  sync.RWMutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return errtrace.Wrap2(b.buf.Write(p))
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.buf.String()
 }
 
 func indent(s string) string {
