@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## v0.3.0 - 2023-12-22
+
+This release adds support to the CLI for using Go package patterns like `./...`
+to match and transform files.
+You can now use `errtrace -w ./...` to instrument all files in a Go module,
+or `errtrace -l ./...` to list all files that would be changed.
+
 ### Added
 - cmd/errtrace: Support Go package patterns in addition to file paths.
   Use `errtrace -w ./...` to transform all files under the current package
