@@ -49,6 +49,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"braces.dev/errtrace"
 )
 
 func main() {
@@ -100,7 +102,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	// TODO: toolexec mode
 
 	if err := flag.Parse(args); err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 
 	p.Patterns = flag.Args()
@@ -153,7 +155,7 @@ func (f *format) Set(s string) error {
 	case "never":
 		*f = formatNever
 	default:
-		return fmt.Errorf("invalid format %q is not one of [auto, always, never]", s)
+		return errtrace.Wrap(fmt.Errorf("invalid format %q is not one of [auto, always, never]", s))
 	}
 	return nil
 }
@@ -184,13 +186,13 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 
 	var p mainParams
 	if err := p.Parse(cmd.Stderr, args); err != nil {
-		cmd.log.Println("errtrace:", err)
+		cmd.log.Printf("errtrace: %+v", err)
 		return 1
 	}
 
 	files, err := expandPatterns(p.Patterns)
 	if err != nil {
-		cmd.log.Println("errtrace:", err)
+		cmd.log.Printf("errtrace: %+v", err)
 		return 1
 	}
 
@@ -221,7 +223,7 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 			ImplicitStdin: p.ImplicitStdin,
 		}
 		if err := cmd.processFile(req); err != nil {
-			cmd.log.Printf("%s:%s", display, err)
+			cmd.log.Printf("%s:%+v", display, err)
 			exitCode = 1
 		}
 	}
@@ -254,7 +256,7 @@ func expandPatterns(args []string) ([]string, error) {
 	if len(patterns) > 0 {
 		pkgFiles, err := goListFiles(patterns)
 		if err != nil {
-			return nil, fmt.Errorf("go list: %w", err)
+			return nil, errtrace.Wrap(fmt.Errorf("go list: %w", err))
 		}
 
 		files = append(files, pkgFiles...)
@@ -279,11 +281,11 @@ func goListFiles(patterns []string) (files []string, err error) {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("create stdout pipe: %w", err)
+		return nil, errtrace.Wrap(fmt.Errorf("create stdout pipe: %w", err))
 	}
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start command: %w", err)
+		return nil, errtrace.Wrap(fmt.Errorf("start command: %w", err))
 	}
 
 	type packageInfo struct {
@@ -299,7 +301,7 @@ func goListFiles(patterns []string) (files []string, err error) {
 	for decoder.More() {
 		var pkg packageInfo
 		if err := decoder.Decode(&pkg); err != nil {
-			return nil, fmt.Errorf("output malformed: %v", err)
+			return nil, errtrace.Wrap(fmt.Errorf("output malformed: %w", err))
 		}
 
 		for _, pkgFiles := range [][]string{
@@ -316,7 +318,7 @@ func goListFiles(patterns []string) (files []string, err error) {
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("%w\n%s", err, stderr.String())
+		return nil, errtrace.Wrap(fmt.Errorf("%w\n%s", err, stderr.String()))
 	}
 
 	return files, nil
@@ -346,12 +348,12 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 
 	src, err := cmd.readFile(r)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 
 	f, err := parser.ParseFile(fset, r.Filename, src, parser.ParseComments)
 	if err != nil {
-		return err
+		return errtrace.Wrap(err)
 	}
 
 	errtracePkg := "errtrace" // name to use for errtrace package
@@ -396,11 +398,11 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 
 	var inserts []insert
 	w := walker{
-		fset:     fset,
-		optouts:  optoutLines(fset, f.Comments),
-		errtrace: errtracePkg,
-		logger:   cmd.log,
-		inserts:  &inserts,
+		fset:        fset,
+		optouts:     optoutLines(fset, f.Comments),
+		errtracePkg: errtracePkg,
+		logger:      cmd.log,
+		inserts:     &inserts,
 	}
 	ast.Walk(&w, f)
 
@@ -423,7 +425,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		if len(inserts) > 0 {
 			_, err = fmt.Fprintf(cmd.Stdout, "%s\n", r.Filename)
 		}
-		return err
+		return errtrace.Wrap(err)
 	}
 
 	// If errtrace isn't imported, but at least one insert was made,
@@ -546,7 +548,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	if r.Format {
 		outSrc, err = gofmt.Source(outSrc)
 		if err != nil {
-			return fmt.Errorf("format: %w", err)
+			return errtrace.Wrap(fmt.Errorf("format: %w", err))
 		}
 	}
 
@@ -555,22 +557,22 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	} else {
 		_, err = cmd.Stdout.Write(outSrc)
 	}
-	return err
+	return errtrace.Wrap(err)
 }
 
 var _stdinWait = 200 * time.Millisecond
 
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 	if r.Filepath != "-" {
-		return os.ReadFile(r.Filename)
+		return errtrace.Wrap2(os.ReadFile(r.Filename))
 	}
 
 	if r.Write {
-		return nil, fmt.Errorf("can't use -w with stdin")
+		return nil, errtrace.Wrap(fmt.Errorf("can't use -w with stdin"))
 	}
 
 	if !r.ImplicitStdin {
-		return io.ReadAll(cmd.Stdin)
+		return errtrace.Wrap2(io.ReadAll(cmd.Stdin))
 	}
 
 	// If we're reading from stdin because there were no other arguments,
@@ -594,7 +596,7 @@ func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 			if errors.Is(err, io.EOF) {
 				err = nil
 			}
-			return buff.Bytes(), err
+			return buff.Bytes(), errtrace.Wrap(err)
 		}
 
 		if firstRead != nil {
@@ -607,9 +609,9 @@ func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 type walker struct {
 	// Inputs
 
-	fset     *token.FileSet // file set for positional information
-	errtrace string         // name of the errtrace package
-	logger   *log.Logger
+	fset        *token.FileSet // file set for positional information
+	errtracePkg string         // name of the errtrace package
+	logger      *log.Logger
 
 	optouts map[int]int // map from line to number of uses
 
@@ -911,7 +913,7 @@ func (t *walker) isErrtraceWrap(expr ast.Expr) bool {
 		return false
 	}
 
-	if !isIdent(sel.X, t.errtrace) {
+	if !isIdent(sel.X, t.errtracePkg) {
 		return false
 	}
 

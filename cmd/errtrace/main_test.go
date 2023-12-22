@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"braces.dev/errtrace"
 	"braces.dev/errtrace/internal/diff"
 )
 
@@ -459,8 +460,11 @@ func TestFormatAuto(t *testing.T) {
 		if want, got := "", out.String(); want != got {
 			t.Errorf("stdout = %q, want %q", got, want)
 		}
-		if want, got := "stdin:can't use -w with stdin\n", err.String(); want != got {
-			t.Errorf("stderr = %q, want %q", got, want)
+		if want, got := "stdin:can't use -w with stdin\n", err.String(); !strings.Contains(got, want) {
+			t.Errorf("stderr = %q, does not contain %q", got, want)
+		}
+		if want, got := "(*mainCmd).readFile", err.String(); !strings.Contains(got, want) {
+			t.Errorf("stderr = %q, does not contain %q", got, want)
 		}
 	})
 }
@@ -799,7 +803,7 @@ func extractLogs(src []byte) ([]logLine, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "", src, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("parse: %w", err)
+		return nil, errtrace.Wrap(fmt.Errorf("parse: %w", err))
 	}
 
 	var logs []logLine
@@ -813,7 +817,7 @@ func extractLogs(src []byte) ([]logLine, error) {
 			pos := fset.Position(l.Pos())
 			s, err := strconv.Unquote(lit)
 			if err != nil {
-				return nil, fmt.Errorf("%s:bad string literal: %s", pos, lit)
+				return nil, errtrace.Wrap(fmt.Errorf("%s:bad string literal: %s", pos, lit))
 			}
 
 			logs = append(logs, logLine{Line: pos.Line, Msg: s})
@@ -838,7 +842,7 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 		line = strings.TrimPrefix(line, file)
 		parts := strings.SplitN(line, ":", 4)
 		if len(parts) != 4 {
-			return nil, fmt.Errorf("bad log line: %q", line)
+			return nil, errtrace.Wrap(fmt.Errorf("bad log line: %q", line))
 		}
 
 		var msg string
@@ -853,12 +857,12 @@ func parseLogOutput(file, s string) ([]logLine, error) {
 			msg = strings.Join(parts[2:], ":")
 		}
 		if msg == "" {
-			return nil, fmt.Errorf("bad log line: %q", line)
+			return nil, errtrace.Wrap(fmt.Errorf("bad log line: %q", line))
 		}
 
 		lineNum, err := strconv.Atoi(parts[1])
 		if err != nil {
-			return nil, fmt.Errorf("bad log line: %q", line)
+			return nil, errtrace.Wrap(fmt.Errorf("bad log line: %q", line))
 		}
 
 		logs = append(logs, logLine{
