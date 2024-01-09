@@ -32,7 +32,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -48,7 +47,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"braces.dev/errtrace"
 )
@@ -560,8 +558,6 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	return errtrace.Wrap(err)
 }
 
-var _stdinWait = 200 * time.Millisecond
-
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 	if r.Filepath != "-" {
 		return errtrace.Wrap2(os.ReadFile(r.Filename))
@@ -571,39 +567,22 @@ func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
 		return nil, errtrace.Wrap(fmt.Errorf("can't use -w with stdin"))
 	}
 
-	if !r.ImplicitStdin {
-		return errtrace.Wrap2(io.ReadAll(cmd.Stdin))
-	}
-
-	// If we're reading from stdin because there were no other arguments,
-	// wait a short time for the first read.
-	// If there's nothing, print a warning and continue waiting.
-	firstRead := make(chan struct{})
-	go func(firstRead <-chan struct{}, wait time.Duration) {
-		select {
-		case <-firstRead:
-		case <-time.After(wait):
-			cmd.log.Println("reading from stdin; use '-h' for help")
+	if r.ImplicitStdin {
+		// Running with no args reads from stdin, but this is not obvious
+		// so print a usage hint to stderr, if we think stdin is a TTY.
+		// Best-effort check for a TTY by looking for a character device.
+		type statter interface {
+			Stat() (os.FileInfo, error)
 		}
-	}(firstRead, _stdinWait)
-
-	var buff bytes.Buffer
-	bs := make([]byte, 1024)
-	for {
-		n, err := cmd.Stdin.Read(bs)
-		buff.Write(bs[:n])
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
+		if st, ok := cmd.Stdin.(statter); ok {
+			if fi, err := st.Stat(); err == nil &&
+				fi.Mode()&os.ModeCharDevice == os.ModeCharDevice {
+				cmd.log.Println("reading from stdin; use '-h' for help")
 			}
-			return buff.Bytes(), errtrace.Wrap(err)
-		}
-
-		if firstRead != nil {
-			close(firstRead)
-			firstRead = nil
 		}
 	}
+
+	return errtrace.Wrap2(io.ReadAll(cmd.Stdin))
 }
 
 type walker struct {

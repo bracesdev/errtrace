@@ -17,7 +17,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"braces.dev/errtrace"
 	"braces.dev/errtrace/internal/diff"
@@ -722,56 +721,63 @@ func TestGoListFilesBadJSON(t *testing.T) {
 }
 
 func TestStdinNoInputMessage(t *testing.T) {
-	// Verify that if there's no input on implicit stdin,
-	// we print a message to stderr to help the user.
-	defer func(old time.Duration) { _stdinWait = old }(_stdinWait)
-	_stdinWait = 10 * time.Millisecond // make the test run faster
-
 	tests := []struct {
 		name       string
-		delay      time.Duration // before writing
+		stdin      func(testing.TB) io.Reader
 		args       []string
 		wantStderr string
 	}{
 		{
-			name:  "no delay",
-			delay: 0,
+			name: "stdin is a file",
+			stdin: func(t testing.TB) io.Reader {
+				f, err := os.Open("testdata/golden/noop.go")
+				if err != nil {
+					t.Fatal(err)
+				}
+				return f
+			},
 		},
 		{
-			name:       "delay",
-			delay:      20 * time.Millisecond,
+			name: "stdin is a pipe",
+			stdin: func(t testing.TB) io.Reader {
+				r, w, err := os.Pipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				go func() {
+					if _, err := w.WriteString("package foo"); err != nil {
+						t.Errorf("failed to write to stdin as pipe: %v", err)
+					}
+					if err := w.Close(); err != nil {
+						t.Errorf("failed to close stdin pipe: %v", err)
+					}
+				}()
+
+				return r
+			},
+		},
+		{
+			name: "implicit stdin with a char device",
+			stdin: func(t testing.TB) io.Reader {
+				return fakeTerminal{strings.NewReader("package foo")}
+			},
 			wantStderr: "reading from stdin; use '-h' for help\n",
 		},
 		{
-			name:  "explicit stdin with delay",
-			args:  []string{"-"},
-			delay: 20 * time.Millisecond,
+			name: "explicit stdin with a char device",
+			stdin: func(t testing.TB) io.Reader {
+				return fakeTerminal{strings.NewReader("package foo")}
+			},
+			args: []string{"-"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// mainCmd.Run is blocking so this has to be in a goroutine.
-			stdin, stdinw := io.Pipe()
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-
-				if tt.delay > 0 {
-					time.Sleep(20 * time.Millisecond)
-				}
-				if _, err := io.WriteString(stdinw, "package foo\n"); err != nil {
-					t.Error(err)
-				}
-
-				if err := stdinw.Close(); err != nil {
-					t.Error(err)
-				}
-			}()
-
-			var stderr lockedBuffer
+			var stderr bytes.Buffer
 			exitCode := (&mainCmd{
-				Stdin:  stdin,
+				Stdin:  tt.stdin(t),
 				Stdout: io.Discard,
 				Stderr: &stderr,
 			}).Run(tt.args)
@@ -779,41 +785,30 @@ func TestStdinNoInputMessage(t *testing.T) {
 			if want := 0; exitCode != want {
 				t.Errorf("exit code = %d, want %d", exitCode, want)
 			}
-			<-done
 
-			// errtrace's goroutine may still be writing to stderr.
-			// Try a few times before giving up.
-			var gotStderr string
-			for i := 0; i < 10; i++ {
-				gotStderr = stderr.String()
-				if gotStderr != tt.wantStderr {
-					time.Sleep(100 * time.Millisecond)
-					continue
-				}
-			}
-
-			if want, got := tt.wantStderr, gotStderr; got != want {
+			if want, got := tt.wantStderr, stderr.String(); got != want {
 				t.Errorf("stderr = %q, want %q", got, want)
 			}
 		})
 	}
 }
 
-type lockedBuffer struct {
-	mu  sync.RWMutex
-	buf bytes.Buffer
+type fakeTerminal struct {
+	io.Reader
 }
 
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return errtrace.Wrap2(b.buf.Write(p))
+func (ft fakeTerminal) Stat() (os.FileInfo, error) {
+	return charDeviceFileInfo{}, nil
 }
 
-func (b *lockedBuffer) String() string {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	return b.buf.String()
+type charDeviceFileInfo struct {
+	// embed so we implement the interface.
+	// unimplemented methods will panic.
+	os.FileInfo
+}
+
+func (fi charDeviceFileInfo) Mode() os.FileMode {
+	return os.ModeDevice | os.ModeCharDevice
 }
 
 func indent(s string) string {
