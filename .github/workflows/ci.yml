@@ -62,7 +62,7 @@ jobs:
         GOARCH: ${{ matrix.arch }}
 
     - name: Coverage
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         files: ./cover.unsafe.out,./cover.safe.out
 
