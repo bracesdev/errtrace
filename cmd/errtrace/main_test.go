@@ -22,6 +22,17 @@ import (
 	"braces.dev/errtrace/internal/diff"
 )
 
+func TestErrHelp(t *testing.T) {
+	exitCode := (&mainCmd{
+		Stdin:  strings.NewReader(""),
+		Stdout: testWriter{t},
+		Stderr: testWriter{t},
+	}).Run([]string{"-h"})
+	if want := 0; exitCode != want {
+		t.Errorf("exit code = %d, want %d", exitCode, want)
+	}
+}
+
 // TestGolden runs errtrace on all .go files inside testdata/golden,
 // and compares the output to the corresponding .golden file.
 // Files must match exactly.

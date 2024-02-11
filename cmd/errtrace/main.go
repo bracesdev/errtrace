@@ -32,6 +32,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -184,6 +185,9 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 
 	var p mainParams
 	if err := p.Parse(cmd.Stderr, args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		cmd.log.Printf("errtrace: %+v", err)
 		return 1
 	}
