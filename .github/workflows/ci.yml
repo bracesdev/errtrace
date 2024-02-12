@@ -81,7 +81,7 @@ jobs:
         go-version-file: go.mod
         cache: false  # managed by golangci-lint
 
-    - uses: golangci/golangci-lint-action@v3
+    - uses: golangci/golangci-lint-action@v4
       name: Install golangci-lint
       with:
         version: latest
