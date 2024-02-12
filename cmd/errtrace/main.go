@@ -58,7 +58,20 @@ func main() {
 		Stderr: os.Stderr,
 		Stdout: os.Stdout,
 	}
-	os.Exit(cmd.Run(os.Args[1:]))
+
+	var exitCode int
+	// panic(fmt.Sprintf("args: %v\ngot: %v", os.Args, os.Environ()))
+	if toolExecPkg, ok := isToolExec(os.Args, os.Getenv); ok {
+		if toolExecPkg == "" {
+			exitCode = cmd.toolExecVersion(os.Args)
+		} else {
+			exitCode = cmd.RunToolExec(toolExecPkg, os.Args)
+		}
+	} else {
+		fmt.Println("got", toolExecPkg, os.Environ())
+		exitCode = cmd.Run(os.Args[1:])
+	}
+	os.Exit(exitCode)
 }
 
 type mainParams struct {
@@ -331,6 +344,7 @@ type fileRequest struct {
 	Write  bool
 	List   bool
 
+	ReadFile string // if set, used instead of filename
 	Filename string // name displayed to the user
 	Filepath string // actual location on disk, or "-" for stdin
 
@@ -563,6 +577,9 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 }
 
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
+	if r.ReadFile != "" {
+		return errtrace.Wrap2(os.ReadFile(r.ReadFile))
+	}
 	if r.Filepath != "-" {
 		return errtrace.Wrap2(os.ReadFile(r.Filename))
 	}
