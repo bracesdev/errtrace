@@ -346,16 +346,63 @@ type fileRequest struct {
 // The collected information is used to pick a package name,
 // whether we need an import, etc. and *then* the edits are applied.
 func (cmd *mainCmd) processFile(r fileRequest) error {
-	fset := token.NewFileSet()
-
 	src, err := cmd.readFile(r)
 	if err != nil {
 		return errtrace.Wrap(err)
 	}
 
-	f, err := parser.ParseFile(fset, r.Filename, src, parser.ParseComments)
+	parsed, err := cmd.parseFile(r.Filename, src)
 	if err != nil {
 		return errtrace.Wrap(err)
+	}
+
+	for _, line := range parsed.unusedOptouts {
+		cmd.log.Printf("%s:%d:unused errtrace:skip", r.Filename, line)
+	}
+	if r.List {
+		if len(parsed.inserts) > 0 {
+			_, err = fmt.Fprintf(cmd.Stdout, "%s\n", r.Filename)
+		}
+		return errtrace.Wrap(err)
+	}
+
+	out := bytes.NewBuffer(nil)
+	if err := cmd.rewriteFile(parsed, out); err != nil {
+		return errtrace.Wrap(err)
+	}
+
+	outSrc := out.Bytes()
+	if r.Format {
+		outSrc, err = gofmt.Source(outSrc)
+		if err != nil {
+			return errtrace.Wrap(fmt.Errorf("format: %w", err))
+		}
+	}
+
+	if r.Write {
+		err = os.WriteFile(r.Filename, outSrc, 0o644)
+	} else {
+		_, err = cmd.Stdout.Write(outSrc)
+	}
+	return errtrace.Wrap(err)
+}
+
+type file struct {
+	src  []byte
+	fset *token.FileSet
+	file *ast.File
+
+	errtracePkg     string
+	importsErrtrace bool
+	inserts         []insert
+	unusedOptouts   []int
+}
+
+func (cmd *mainCmd) parseFile(filename string, src []byte) (file, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+	if err != nil {
+		return file{}, errtrace.Wrap(err)
 	}
 
 	errtracePkg := "errtrace" // name to use for errtrace package
@@ -409,25 +456,15 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	ast.Walk(&w, f)
 
 	// Look for unused optouts and warn about them.
+	var unusedOptouts []int
 	if len(w.optouts) > 0 {
-		unusedOptouts := make([]int, 0, len(w.optouts))
+		unusedOptouts = make([]int, 0, len(w.optouts))
 		for line, used := range w.optouts {
 			if used == 0 {
 				unusedOptouts = append(unusedOptouts, line)
 			}
 		}
 		sort.Ints(unusedOptouts)
-
-		for _, line := range unusedOptouts {
-			cmd.log.Printf("%s:%d:unused errtrace:skip", r.Filename, line)
-		}
-	}
-
-	if r.List {
-		if len(inserts) > 0 {
-			_, err = fmt.Fprintf(cmd.Stdout, "%s\n", r.Filename)
-		}
-		return errtrace.Wrap(err)
 	}
 
 	// If errtrace isn't imported, but at least one insert was made,
@@ -487,13 +524,23 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		return inserts[i].Pos() < inserts[j].Pos()
 	})
 
-	out := bytes.NewBuffer(nil)
+	return file{
+		src:             src,
+		fset:            fset,
+		file:            f,
+		errtracePkg:     errtracePkg,
+		importsErrtrace: importsErrtrace,
+		inserts:         inserts,
+		unusedOptouts:   unusedOptouts,
+	}, nil
+}
 
+func (cmd *mainCmd) rewriteFile(f file, out *bytes.Buffer) error {
 	var lastOffset int
-	filePos := fset.File(f.Pos()) // position information for this file
-	for _, it := range inserts {
+	filePos := f.fset.File(f.file.Pos()) // position information for this file
+	for _, it := range f.inserts {
 		offset := filePos.Offset(it.Pos())
-		_, _ = out.Write(src[lastOffset:offset])
+		_, _ = out.Write(f.src[lastOffset:offset])
 		lastOffset = offset
 
 		switch it := it.(type) {
@@ -503,15 +550,15 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 				_, _ = io.WriteString(out, "import ")
 			}
 
-			if errtracePkg == "errtrace" {
+			if f.errtracePkg == "errtrace" {
 				// Don't use named imports if we're using the default name.
 				fmt.Fprintf(out, "%q", "braces.dev/errtrace")
 			} else {
-				fmt.Fprintf(out, "%s %q", errtracePkg, "braces.dev/errtrace")
+				fmt.Fprintf(out, "%s %q", f.errtracePkg, "braces.dev/errtrace")
 			}
 
 		case *insertWrapOpen:
-			fmt.Fprintf(out, "%s.Wrap", errtracePkg)
+			fmt.Fprintf(out, "%s.Wrap", f.errtracePkg)
 			if it.N > 1 {
 				fmt.Fprintf(out, "%d", it.N)
 			}
@@ -536,7 +583,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 				if i > 0 {
 					_, _ = out.WriteString(", ")
 				}
-				fmt.Fprintf(out, "%s.Wrap(%s)", errtracePkg, name)
+				fmt.Fprintf(out, "%s.Wrap(%s)", f.errtracePkg, name)
 			}
 			_, _ = out.WriteString("; ")
 
@@ -544,22 +591,8 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 			cmd.log.Panicf("unhandled insertion type %T", it)
 		}
 	}
-	_, _ = out.Write(src[lastOffset:]) // flush remaining
-
-	outSrc := out.Bytes()
-	if r.Format {
-		outSrc, err = gofmt.Source(outSrc)
-		if err != nil {
-			return errtrace.Wrap(fmt.Errorf("format: %w", err))
-		}
-	}
-
-	if r.Write {
-		err = os.WriteFile(r.Filename, outSrc, 0o644)
-	} else {
-		_, err = cmd.Stdout.Write(outSrc)
-	}
-	return errtrace.Wrap(err)
+	_, _ = out.Write(f.src[lastOffset:]) // flush remaining
+	return nil
 }
 
 func (cmd *mainCmd) readFile(r fileRequest) ([]byte, error) {
