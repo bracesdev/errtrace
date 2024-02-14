@@ -57,7 +57,9 @@ func main() {
 		Stdin:  os.Stdin,
 		Stderr: os.Stderr,
 		Stdout: os.Stdout,
+		Getenv: os.Getenv,
 	}
+
 	os.Exit(cmd.Run(os.Args[1:]))
 }
 
@@ -97,8 +99,6 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		"write result to the given source files instead of stdout.")
 	flag.BoolVar(&p.List, "l", false,
 		"list files that would be modified without making any changes.")
-
-	// TODO: toolexec mode
 
 	if err := flag.Parse(args); err != nil {
 		return errtrace.Wrap(err)
@@ -176,12 +176,17 @@ type mainCmd struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
+	Getenv func(string) string
 
 	log *log.Logger
 }
 
 func (cmd *mainCmd) Run(args []string) (exitCode int) {
 	cmd.log = log.New(cmd.Stderr, "", 0)
+
+	if exitCode, ok := cmd.handleToolExec(args); ok {
+		return exitCode
+	}
 
 	var p mainParams
 	if err := p.Parse(cmd.Stderr, args); err != nil {
