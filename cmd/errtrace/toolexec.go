@@ -53,7 +53,7 @@ func (cmd *mainCmd) toolExecVersion(args []string) int {
 	}
 
 	// TODO: This version number should change whenever the rewriting changes.
-	fmt.Fprintf(cmd.Stdout, "%s-errtrace0\n", strings.TrimSpace(stdout.String()))
+	fmt.Fprintf(cmd.Stdout, "%s-errtrace1\n", strings.TrimSpace(stdout.String()))
 	return 0
 }
 
