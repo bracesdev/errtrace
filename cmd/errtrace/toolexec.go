@@ -48,7 +48,7 @@ func (cmd *mainCmd) toolExecVersion(args []string) int {
 			return exitErr.ExitCode()
 		}
 
-		fmt.Fprintf(cmd.Stderr, "%v failed: %v", args[0], err)
+		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", args[0], err)
 		return 1
 	}
 
@@ -167,7 +167,7 @@ func (cmd *mainCmd) runOriginal(args []string) (exitCode int) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return exitErr.ExitCode()
 		}
-		fmt.Fprintf(cmd.Stderr, "tool failed: %v", err)
+		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", args[0], err)
 		return 1
 	}
 
