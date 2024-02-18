@@ -132,10 +132,10 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 		}
 
 		// Add a //line directive so the original filepath is used in errors and panics.
-		out := bytes.NewBuffer(nil)
-		_, _ = fmt.Fprintf(out, "//line %v:1\n", arg)
+		var out bytes.Buffer
+		_, _ = fmt.Fprintf(&out, "//line %v:1\n", arg)
 
-		if err := cmd.rewriteFile(f, out); err != nil {
+		if err := cmd.rewriteFile(f, &out); err != nil {
 			return -1, errtrace.Wrap(err)
 		}
 

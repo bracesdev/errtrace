@@ -371,8 +371,8 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		return errtrace.Wrap(err)
 	}
 
-	out := bytes.NewBuffer(nil)
-	if err := cmd.rewriteFile(parsed, out); err != nil {
+	var out bytes.Buffer
+	if err := cmd.rewriteFile(parsed, &out); err != nil {
 		return errtrace.Wrap(err)
 	}
 
