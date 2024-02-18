@@ -2,11 +2,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	"braces.dev/errtrace"
@@ -39,6 +42,11 @@ func (cmd *mainCmd) handleToolExec(args []string) (exitCode int, handled bool) {
 }
 
 func (cmd *mainCmd) toolExecVersion(args []string) int {
+	version, err := binaryVersion()
+	if err != nil {
+		fmt.Fprintf(cmd.Stderr, "errtrace version failed: %v", err)
+	}
+
 	tool := exec.Command(args[0], args[1:]...)
 	var stdout bytes.Buffer
 	tool.Stdout = &stdout
@@ -52,8 +60,7 @@ func (cmd *mainCmd) toolExecVersion(args []string) int {
 		return 1
 	}
 
-	// TODO: This version number should change whenever the rewriting changes.
-	fmt.Fprintf(cmd.Stdout, "%s-errtrace1\n", strings.TrimSpace(stdout.String()))
+	fmt.Fprintf(cmd.Stdout, "%s-errtrace-%s\n", strings.TrimSpace(stdout.String()), version)
 	return 0
 }
 
@@ -172,4 +179,47 @@ func (cmd *mainCmd) runOriginal(args []string) (exitCode int) {
 	}
 
 	return 0
+}
+
+// binaryVersion returns a string that uniquely identifies the binary.
+// We prefer to use the VCS info embedded in the build if possible
+// falling back to the MD5 of the binary.
+func binaryVersion() (string, error) {
+	sha, ok := readBuildSHA()
+	if ok {
+		return sha, nil
+	}
+
+	contents, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		return "", errtrace.Wrap(err)
+	}
+
+	binaryHash := md5.Sum(contents)
+	return hex.EncodeToString(binaryHash[:]), nil
+}
+
+// readBuildSHA returns the VCS SHA, if it's from an unmodified VCS state.
+func readBuildSHA() (_ string, ok bool) {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", false
+	}
+
+	var sha string
+	for _, s := range buildInfo.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			sha = s.Value
+		case "vcs.modified":
+			if s.Value != "false" {
+				return "", false
+			}
+		}
+	}
+	if sha == "" {
+		return "", false
+	}
+
+	return sha, true
 }
