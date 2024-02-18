@@ -81,7 +81,7 @@ func (cmd *mainCmd) toolExecRewrite(pkg string, args []string) (exitCode int) {
 }
 
 func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ error) {
-	parsed := make(map[string]file)
+	parsed := make(map[string]parsedFile)
 	var canRewrite, needRewrite bool
 	for _, arg := range args {
 		if !isGoFile(arg) {

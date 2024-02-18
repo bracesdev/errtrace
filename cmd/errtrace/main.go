@@ -392,7 +392,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 	return errtrace.Wrap(err)
 }
 
-type file struct {
+type parsedFile struct {
 	src  []byte
 	fset *token.FileSet
 	file *ast.File
@@ -403,11 +403,11 @@ type file struct {
 	unusedOptouts   []int
 }
 
-func (cmd *mainCmd) parseFile(filename string, src []byte) (file, error) {
+func (cmd *mainCmd) parseFile(filename string, src []byte) (parsedFile, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
 	if err != nil {
-		return file{}, errtrace.Wrap(err)
+		return parsedFile{}, errtrace.Wrap(err)
 	}
 
 	errtracePkg := "errtrace" // name to use for errtrace package
@@ -529,7 +529,7 @@ func (cmd *mainCmd) parseFile(filename string, src []byte) (file, error) {
 		return inserts[i].Pos() < inserts[j].Pos()
 	})
 
-	return file{
+	return parsedFile{
 		src:             src,
 		fset:            fset,
 		file:            f,
@@ -540,7 +540,7 @@ func (cmd *mainCmd) parseFile(filename string, src []byte) (file, error) {
 	}, nil
 }
 
-func (cmd *mainCmd) rewriteFile(f file, out *bytes.Buffer) error {
+func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 	var lastOffset int
 	filePos := f.fset.File(f.file.Pos()) // position information for this file
 	for _, it := range f.inserts {
