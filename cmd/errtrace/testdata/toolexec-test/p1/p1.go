@@ -8,5 +8,5 @@ import (
 
 // WrapP2 wraps an error return from p2.
 func WrapP2() error {
-	return fmt.Errorf("test2: %w", p2.ReturnErr())
+	return fmt.Errorf("test2: %w", p2.CallP3())
 }
