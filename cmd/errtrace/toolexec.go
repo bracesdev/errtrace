@@ -134,6 +134,7 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 			return -1, errtrace.Wrap(err)
 		}
 
+		// TODO: Handle clashes with the same base name in different directories (E.g., with bazel).
 		newFile := filepath.Join(tempDir, filepath.Base(arg))
 		if err := os.WriteFile(newFile, out.Bytes(), 0o666); err != nil {
 			return -1, errtrace.Wrap(err)
