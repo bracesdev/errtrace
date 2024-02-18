@@ -56,23 +56,87 @@ func TestToolExec(t *testing.T) {
 	}
 	sort.Strings(wantTraces)
 
-	t.Run("no toolexec", func(t *testing.T) {
-		stdout, _ := runGo(t, testProg, "run", ".")
-		if lines := fileLines(stdout); len(lines) > 0 {
-			t.Errorf("expected no file:line, got %v", lines)
-		}
-	})
+	tests := []struct {
+		name       string
+		goArgs     func(t testing.TB) []string
+		wantTraces []string
+	}{
+		{
+			name: "no toolexec",
+			goArgs: func(t testing.TB) []string {
+				return []string{"."}
+			},
+			wantTraces: nil,
+		},
+		{
+			name: "toolexec with pkg",
+			goArgs: func(t testing.TB) []string {
+				return []string{"-toolexec", errTraceCmd, "."}
+			},
+			wantTraces: wantTraces,
+		},
+		{
+			name: "toolexec with files",
+			goArgs: func(t testing.TB) []string {
+				files, err := goListFiles([]string{testProg})
+				if err != nil {
+					t.Fatalf("list go files in %v: %v", testProg, err)
+				}
 
-	t.Run("with toolexec", func(t *testing.T) {
-		stdout, _ := runGo(t, testProg, "run", "-toolexec", errTraceCmd, ".")
-		gotLines := fileLines(stdout)
+				// TODO: Once go.1.20 is dropped, we can use slices.DeleteFunc
+				nonTest := files[:0]
+				for _, file := range files {
+					if !strings.HasSuffix(file, "_test.go") {
+						nonTest = append(nonTest, file)
+					}
+				}
 
-		sort.Strings(gotLines)
-		if d := diff.Diff(wantTraces, gotLines); d != "" {
-			t.Errorf("diff in traces:\n%s", d)
-			t.Errorf("go run output:\n%s", stdout)
-		}
-	})
+				args := []string{"-toolexec", errTraceCmd}
+				args = append(args, nonTest...)
+				return args
+			},
+			wantTraces: wantTraces,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			args := tt.goArgs(t)
+
+			verify := func(t testing.TB, stdout string) {
+				gotLines := fileLines(stdout)
+				sort.Strings(gotLines)
+
+				if d := diff.Diff(tt.wantTraces, gotLines); d != "" {
+					t.Errorf("diff in traces:\n%s", d)
+					t.Errorf("go run output:\n%s", stdout)
+				}
+			}
+
+			t.Run("go run", func(t *testing.T) {
+				runArgs := append([]string{"run"}, args...)
+				stdout, _ := runGo(t, testProg, runArgs...)
+				verify(t, stdout)
+			})
+
+			t.Run("go build", func(t *testing.T) {
+				outExe := filepath.Join(t.TempDir(), "main")
+				if runtime.GOOS == "windows" {
+					outExe += ".exe"
+				}
+
+				runArgs := append([]string{"build", "-o", outExe}, args...)
+				runGo(t, testProg, runArgs...)
+
+				cmd := exec.Command(outExe)
+				output, err := cmd.Output()
+				if err != nil {
+					t.Fatalf("run built binary: %v", err)
+				}
+				verify(t, string(output))
+			})
+		})
+	}
 }
 
 func findTraceLines(t testing.TB, file string) []int {
