@@ -63,9 +63,9 @@ func (cmd *mainCmd) toolExecRewrite(pkg string, args []string) (exitCode int) {
 		return cmd.runOriginal(args)
 	}
 
-	// We only modify files that import errtrace, and have "errtrace.ToolExecInstrument"
-	// However, that requires parsing files to determine, which we want to avoid for stdlib
-	// so use a heuristic to detect stdlib packages -- whether the name contains "."".
+	// We only modify files that import errtrace, so stdlib is never eliglble.
+	// To avoid unnecessary parsing, use a heuristic to detect stdlib packages --
+	// whether the name contains ".".
 	if !strings.Contains(pkg, ".") {
 		return cmd.runOriginal(args)
 	}
