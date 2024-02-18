@@ -43,7 +43,6 @@ func (cmd *mainCmd) toolExecVersion(args []string) int {
 	var stdout bytes.Buffer
 	tool.Stdout = &stdout
 	tool.Stderr = cmd.Stderr
-	tool.Env = os.Environ()
 	if err := tool.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return exitErr.ExitCode()
@@ -166,7 +165,6 @@ func (cmd *mainCmd) runOriginal(args []string) (exitCode int) {
 	tool.Stdin = cmd.Stdin
 	tool.Stdout = cmd.Stdout
 	tool.Stderr = cmd.Stderr
-	tool.Env = os.Environ()
 
 	if err := tool.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
