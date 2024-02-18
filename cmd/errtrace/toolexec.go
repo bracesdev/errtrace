@@ -116,6 +116,7 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 	if err != nil {
 		return -1, errtrace.Wrap(err)
 	}
+	defer os.RemoveAll(tempDir) //nolint:errcheck // best-effort removal of temp files.
 
 	newArgs := make([]string, 0, len(args))
 	for _, arg := range args {
