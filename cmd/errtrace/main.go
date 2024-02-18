@@ -400,7 +400,7 @@ type parsedFile struct {
 	errtracePkg     string
 	importsErrtrace bool
 	inserts         []insert
-	unusedOptouts   []int
+	unusedOptouts   []int // list of line numbers
 }
 
 func (cmd *mainCmd) parseFile(filename string, src []byte) (parsedFile, error) {
