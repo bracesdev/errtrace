@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -21,6 +22,9 @@ func TestToolExec(t *testing.T) {
 	const testProg = "./testdata/toolexec-test"
 
 	errTraceCmd := filepath.Join(t.TempDir(), "errtrace")
+	if runtime.GOOS == "windows" {
+		errTraceCmd += ".exe" // can't run binaries on Windows otherwise.
+	}
 	runGo(t, ".", "build", "-o", errTraceCmd, ".")
 
 	var wantTraces []string
@@ -36,6 +40,11 @@ func TestToolExec(t *testing.T) {
 			absPath, err := filepath.Abs(path)
 			if err != nil {
 				t.Fatalf("abspath: %v", err)
+			}
+			if runtime.GOOS == "windows" {
+				// On Windows, absPath uses windows path separators, e.g., "c:\foo"
+				// but the paths reported in traces contain '/'.
+				absPath = filepath.ToSlash(absPath)
 			}
 
 			wantTraces = append(wantTraces, fmt.Sprintf("%v:%v", absPath, line))
