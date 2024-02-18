@@ -71,7 +71,7 @@ func (cmd *mainCmd) toolExecRewrite(pkg string, args []string) (exitCode int) {
 	}
 
 	// We only modify files that import errtrace, so stdlib is never eliglble.
-	if isStdLib(pkg, args) {
+	if isStdLib(args) {
 		return cmd.runOriginal(args)
 	}
 
@@ -223,12 +223,7 @@ func readBuildSHA() (_ string, ok bool) {
 	return sha, sha != ""
 }
 
-// isStdLib checks if the current execution is for stdlib using
-// the package name, and arguments.
-func isStdLib(pkg string, args []string) bool {
-	if strings.Contains(pkg, ".") {
-		return false
-	}
-
+// isStdLib checks if the current execution is for stdlib.
+func isStdLib(args []string) bool {
 	return slicesContains(args, "-std")
 }
