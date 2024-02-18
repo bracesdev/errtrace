@@ -398,7 +398,7 @@ type parsedFile struct {
 	file *ast.File
 
 	errtracePkg     string
-	importsErrtrace bool
+	importsErrtrace bool // includes blank imports
 	inserts         []insert
 	unusedOptouts   []int // list of line numbers
 }
@@ -410,21 +410,27 @@ func (cmd *mainCmd) parseFile(filename string, src []byte) (parsedFile, error) {
 		return parsedFile{}, errtrace.Wrap(err)
 	}
 
-	errtracePkg := "errtrace" // name to use for errtrace package
-	var importsErrtrace bool  // whether the file imports errtrace already
+	errtracePkg := "errtrace"  // name to use for errtrace package
+	var importsErrtrace bool   // whether there's any errtrace import, including blank imports
+	needErrtraceImport := true // whether to add a new import.
 	for _, imp := range f.Imports {
 		if imp.Path.Value == `"braces.dev/errtrace"` {
 			importsErrtrace = true
 			if imp.Name != nil {
+				if imp.Name.Name == "_" {
+					// Can't use a blank import, keep processing imports.
+					continue
+				}
 				// If the file already imports errtrace,
 				// we'll want to use the name it's imported under.
 				errtracePkg = imp.Name.Name
 			}
+			needErrtraceImport = false
 			break
 		}
 	}
 
-	if !importsErrtrace {
+	if needErrtraceImport {
 		// If the file doesn't import errtrace already,
 		// do a quick check to find an unused identifier name.
 		idents := make(map[string]struct{})
@@ -475,7 +481,7 @@ func (cmd *mainCmd) parseFile(filename string, src []byte) (parsedFile, error) {
 	// If errtrace isn't imported, but at least one insert was made,
 	// we'll need to import errtrace.
 	// Add an import declaration to the file.
-	if !importsErrtrace && len(inserts) > 0 {
+	if needErrtraceImport && len(inserts) > 0 {
 		// We want to insert the import after the last existing import.
 		// If the last import is part of a group, we'll make it part of the group.
 		//

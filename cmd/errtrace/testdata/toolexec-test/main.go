@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	_ "braces.dev/errtrace" // Opt-in to errtrace wrapping with toolexec.
 	"braces.dev/errtrace/cmd/errtrace/testdata/toolexec-test/p1"
 )
 
