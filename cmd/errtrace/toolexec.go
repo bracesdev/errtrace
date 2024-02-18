@@ -120,11 +120,6 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 
 	newArgs := make([]string, 0, len(args))
 	for _, arg := range args {
-		if !isGoFile(arg) {
-			newArgs = append(newArgs, arg)
-			continue
-		}
-
 		f, ok := parsed[arg]
 		if !ok || len(f.inserts) == 0 {
 			newArgs = append(newArgs, arg)
