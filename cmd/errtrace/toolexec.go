@@ -190,7 +190,12 @@ func binaryVersion() (string, error) {
 		return sha, nil
 	}
 
-	contents, err := os.ReadFile(os.Args[0])
+	exe, err := os.Executable()
+	if err != nil {
+		return "", errtrace.Wrap(err)
+	}
+
+	contents, err := os.ReadFile(exe)
 	if err != nil {
 		return "", errtrace.Wrap(err)
 	}
