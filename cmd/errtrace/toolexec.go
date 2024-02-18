@@ -222,9 +222,5 @@ func readBuildSHA() (_ string, ok bool) {
 			}
 		}
 	}
-	if sha == "" {
-		return "", false
-	}
-
-	return sha, true
+	return sha, sha != ""
 }
