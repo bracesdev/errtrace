@@ -413,6 +413,18 @@ type parsedFile struct {
 	importsErrtrace bool // includes blank imports
 	inserts         []insert
 	unusedOptouts   []int // list of line numbers
+
+	// Used for toolexec unsafe mode, when rewriting packages that can't
+	// import errtrace, so go:linkname is used.
+	pkgSelector  string // defaults to "."
+	unsafeImport bool
+}
+
+func (f *parsedFile) errtracePkgPrefix() string {
+	if f.pkgSelector == "" {
+		return fmt.Sprintf("%s.", f.errtracePkg)
+	}
+	return fmt.Sprintf("%s%s", f.errtracePkg, f.pkgSelector)
 }
 
 func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (parsedFile, error) {
@@ -574,7 +586,12 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 				_, _ = io.WriteString(out, "import ")
 			}
 
-			if f.errtracePkg == "errtrace" {
+			if f.unsafeImport {
+				// When using go:link, we don't need to import errtrace, but need to
+				// import "unsafe" for go:link.  Since duplicate blank imports are allowed
+				// by Go, we can always add it, without checking if it has been imported.
+				fmt.Fprintf(out, "_ %q", "unsafe")
+			} else if f.errtracePkg == "errtrace" {
 				// Don't use named imports if we're using the default name.
 				fmt.Fprintf(out, "%q", "braces.dev/errtrace")
 			} else {
@@ -582,7 +599,11 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 			}
 
 		case *insertWrapOpen:
-			fmt.Fprintf(out, "%s.Wrap", f.errtracePkg)
+			if it.N > 1 {
+				_, _ = out.WriteString("(")
+				continue
+			}
+			fmt.Fprintf(out, "%sWrap", f.errtracePkgPrefix())
 			if it.N > 1 {
 				fmt.Fprintf(out, "%d", it.N)
 			}
@@ -605,7 +626,7 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 
 			// Last return is an error, wrap it.
 			last := &vars[len(vars)-1]
-			*last = fmt.Sprintf("%s.Wrap(%v)", f.errtracePkg, *last)
+			*last = fmt.Sprintf("%sWrap(%v)", f.errtracePkgPrefix(), *last)
 
 			fmt.Fprintf(out, "; return %s }", strings.Join(vars, ", "))
 
@@ -625,7 +646,7 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 				if i > 0 {
 					_, _ = out.WriteString(", ")
 				}
-				fmt.Fprintf(out, "%s.Wrap(%s)", f.errtracePkg, name)
+				fmt.Fprintf(out, "%sWrap(%s)", f.errtracePkgPrefix(), name)
 			}
 			_, _ = out.WriteString("; ")
 

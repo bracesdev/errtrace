@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,12 +23,18 @@ func (cmd *mainCmd) handleToolExec(args []string) (exitCode int, handled bool) {
 		return -1, false
 	}
 
+	var p toolExecParams
+	if err := p.Parse(os.Stdout, args); err != nil {
+		cmd.log.Print(err)
+		return 1, true
+	}
+
 	for _, arg := range args {
 		if arg == "-V=full" {
 			// compile is run first with "-V=full" to get a version number
 			// for caching build IDs.
 			// No TOOLEXEC_IMPORTPATH is set in this case.
-			return cmd.toolExecVersion(args), true
+			return cmd.toolExecVersion(p), true
 		}
 	}
 
@@ -35,19 +43,65 @@ func (cmd *mainCmd) handleToolExec(args []string) (exitCode int, handled bool) {
 	}
 	// When "-toolexec" is used, the go cmd sets the package being compiled in the env.
 	if pkg := cmd.Getenv("TOOLEXEC_IMPORTPATH"); pkg != "" {
-		return cmd.toolExecRewrite(pkg, args), true
+		return cmd.toolExecRewrite(pkg, p), true
 	}
 
 	return -1, false
 }
 
-func (cmd *mainCmd) toolExecVersion(args []string) int {
+type toolExecParams struct {
+	UnsafePkgSelectors []string
+
+	Tool     string
+	ToolArgs []string
+}
+
+func (p *toolExecParams) Parse(w io.Writer, args []string) error {
+	flag := flag.NewFlagSet("errtrace (toolexec)", flag.ContinueOnError)
+	flag.Usage = func() {
+		fmt.Fprintln(w, `usage with go build/run/test: -toolexec="errtrace [options]"`)
+		flag.PrintDefaults()
+	}
+	var unsafePkgs string
+	flag.StringVar(&unsafePkgs, "unsafe-packages", "", "comma-separated list of package selectors "+
+		"to unsafely rewrite, regardless of whether they import errtrace.")
+
+	// Flag parsing stops at the first non-flag argument (no "-").
+	if err := flag.Parse(args); err != nil {
+		return errtrace.Wrap(err)
+	}
+
+	p.UnsafePkgSelectors = strings.Split(unsafePkgs, ",")
+
+	remArgs := flag.Args()
+	if len(remArgs) == 0 {
+		return errtrace.New("toolexec expected tool arguments")
+	}
+
+	p.Tool = remArgs[0]
+	p.ToolArgs = remArgs[1:]
+	return nil
+}
+
+// Options affect the generated code, so use a hash
+// of any options for the toolexec version.
+func (p *toolExecParams) versionCacheKey() string {
+	withoutTool := *p
+	withoutTool.Tool = ""
+	withoutTool.ToolArgs = nil
+
+	optStr := fmt.Sprintf("%v", withoutTool)
+	optHash := md5.Sum([]byte(optStr))
+	return hex.EncodeToString(optHash[:])
+}
+
+func (cmd *mainCmd) toolExecVersion(p toolExecParams) int {
 	version, err := binaryVersion()
 	if err != nil {
 		fmt.Fprintf(cmd.Stderr, "errtrace version failed: %v", err)
 	}
 
-	tool := exec.Command(args[0], args[1:]...)
+	tool := exec.Command(p.Tool, p.ToolArgs...)
 	var stdout bytes.Buffer
 	tool.Stdout = &stdout
 	tool.Stderr = cmd.Stderr
@@ -56,26 +110,39 @@ func (cmd *mainCmd) toolExecVersion(args []string) int {
 			return exitErr.ExitCode()
 		}
 
-		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", args[0], err)
+		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", p.Tool, err)
 		return 1
 	}
 
-	fmt.Fprintf(cmd.Stdout, "%s-errtrace-%s\n", strings.TrimSpace(stdout.String()), version)
+	fmt.Fprintf(cmd.Stdout, "%s-errtrace-%s%s\n", strings.TrimSpace(stdout.String()), version, p.versionCacheKey())
 	return 0
 }
 
-func (cmd *mainCmd) toolExecRewrite(pkg string, args []string) (exitCode int) {
+func (p *toolExecParams) unsafeIncludesStd() bool {
+	return slicesContains(p.UnsafePkgSelectors, "std")
+}
+
+func (p *toolExecParams) unsafeRewrite(importPath string) bool {
+	for _, selector := range p.UnsafePkgSelectors {
+		if packageSelectorMatch(selector, importPath) {
+			return true
+		}
+	}
+	return false
+}
+
+func (cmd *mainCmd) toolExecRewrite(pkg string, p toolExecParams) (exitCode int) {
 	// We only need to modify the arguments for "compile" calls which work with .go files.
-	if !isCompile(args[0]) {
-		return cmd.runOriginal(args)
+	if !isCompile(p.Tool) {
+		return cmd.runOriginal(p)
 	}
 
-	// We only modify files that import errtrace, so stdlib is never eliglble.
-	if isStdLib(args) {
-		return cmd.runOriginal(args)
+	// We only modify files that import errtrace, so stdlib is only eligible in unsafe mode.
+	if isStdLib(p.ToolArgs) && !p.unsafeIncludesStd() {
+		return cmd.runOriginal(p)
 	}
 
-	exitCode, err := cmd.rewriteCompile(pkg, args)
+	exitCode, err := cmd.rewriteCompile(pkg, p)
 	if err != nil {
 		cmd.log.Print(err)
 		return 1
@@ -84,10 +151,10 @@ func (cmd *mainCmd) toolExecRewrite(pkg string, args []string) (exitCode int) {
 	return exitCode
 }
 
-func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ error) {
+func (cmd *mainCmd) rewriteCompile(pkg string, p toolExecParams) (exitCode int, _ error) {
 	parsed := make(map[string]parsedFile)
-	var canRewrite, needRewrite bool
-	for _, arg := range args {
+	var importsErrtrace, hasInserts bool
+	for _, arg := range p.ToolArgs {
 		if !isGoFile(arg) {
 			continue
 		}
@@ -97,23 +164,34 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 			return -1, errtrace.Wrap(err)
 		}
 
-		f, err := cmd.parseFile(arg, contents, rewriteOpts{})
+		f, err := cmd.parseFile(arg, contents, rewriteOpts{
+			NoWrapN: true,
+		})
 		if err != nil {
 			return -1, errtrace.Wrap(err)
 		}
 		parsed[arg] = f
 
-		// TODO: Support an "unsafe" mode to rewrite packages without errtrace imports.
 		if f.importsErrtrace {
-			canRewrite = true
+			importsErrtrace = true
 		}
 		if len(f.inserts) > 0 {
-			needRewrite = true
+			hasInserts = true
 		}
 	}
 
-	if !canRewrite || !needRewrite {
-		return cmd.runOriginal(args), nil
+	unsafeForceImport := p.unsafeRewrite(pkg)
+	if pkg == "braces.dev/errtrace" {
+		unsafeForceImport = false
+	}
+
+	rewrite := hasInserts
+	if !unsafeForceImport {
+		rewrite = rewrite && importsErrtrace
+	}
+
+	if !rewrite {
+		return cmd.runOriginal(p), nil
 	}
 
 	// Use a temporary directory per-package that is rewritten.
@@ -121,22 +199,40 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 	if err != nil {
 		return -1, errtrace.Wrap(err)
 	}
-	defer os.RemoveAll(tempDir) //nolint:errcheck // best-effort removal of temp files.
+	// defer os.RemoveAll(tempDir) //nolint:errcheck // best-effort removal of temp files.
 
-	newArgs := make([]string, 0, len(args))
-	for _, arg := range args {
+	// If a package doesn't already import errtrace, we'll use
+	// go:linkname, which uses `errtrace_Wrap` style function names.
+
+	addLinkName := !importsErrtrace
+
+	newArgs := make([]string, 0, len(p.ToolArgs))
+	for _, arg := range p.ToolArgs {
 		f, ok := parsed[arg]
 		if !ok || len(f.inserts) == 0 {
 			newArgs = append(newArgs, arg)
 			continue
 		}
 
-		// Add a //line directive so the original filepath is used in errors and panics.
-		var out bytes.Buffer
-		_, _ = fmt.Fprintf(&out, "//line %v:1\n", arg)
+		if !importsErrtrace {
+			f.unsafeImport = true
+			f.errtracePkg = "errtrace"
+			f.pkgSelector = "_"
+		}
 
-		if err := cmd.rewriteFile(f, &out); err != nil {
+		// Add a //line directive so the original filepath is used in errors and panics.
+		out := &bytes.Buffer{}
+		_, _ = fmt.Fprintf(out, "//line %v:1\n", arg)
+
+		if err := cmd.rewriteFile(f, out); err != nil {
 			return -1, errtrace.Wrap(err)
+		}
+
+		if addLinkName {
+			// TODO: Ensure symbol used for go:linkname isn't used.
+			_, _ = fmt.Fprintln(out, "\n\n//go:linkname errtrace_Wrap braces.dev/errtrace.Wrap")
+			_, _ = fmt.Fprintln(out, "func errtrace_Wrap(err error) error")
+			addLinkName = false
 		}
 
 		// TODO: Handle clashes with the same base name in different directories (E.g., with bazel).
@@ -148,7 +244,8 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 		newArgs = append(newArgs, newFile)
 	}
 
-	return cmd.runOriginal(newArgs), nil
+	p.ToolArgs = newArgs
+	return cmd.runOriginal(p), nil
 }
 
 func isCompile(arg string) bool {
@@ -162,8 +259,8 @@ func isGoFile(arg string) bool {
 	return strings.HasSuffix(arg, ".go")
 }
 
-func (cmd *mainCmd) runOriginal(args []string) (exitCode int) {
-	tool := exec.Command(args[0], args[1:]...)
+func (cmd *mainCmd) runOriginal(p toolExecParams) (exitCode int) {
+	tool := exec.Command(p.Tool, p.ToolArgs...)
 	tool.Stdin = cmd.Stdin
 	tool.Stdout = cmd.Stdout
 	tool.Stderr = cmd.Stderr
@@ -172,7 +269,7 @@ func (cmd *mainCmd) runOriginal(args []string) (exitCode int) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return exitErr.ExitCode()
 		}
-		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", args[0], err)
+		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", p.Tool, err)
 		return 1
 	}
 
@@ -226,4 +323,14 @@ func readBuildSHA() (_ string, ok bool) {
 // isStdLib checks if the current execution is for stdlib.
 func isStdLib(args []string) bool {
 	return slicesContains(args, "-std")
+}
+
+func packageSelectorMatch(selector, importPath string) bool {
+	if pkgPrefix, ok := strings.CutSuffix(selector, "..."); ok {
+		// foo/... also matches foo.
+		pkgPrefix = strings.TrimSuffix(pkgPrefix, "/")
+		return strings.HasPrefix(importPath, pkgPrefix)
+	}
+
+	return selector == importPath
 }
