@@ -1,5 +1,6 @@
 //go:build ignore
 
+// @runIf options=<empty>
 package foo
 
 import "example.com/bar"; import "braces.dev/errtrace"

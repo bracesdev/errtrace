@@ -97,7 +97,7 @@ func (cmd *mainCmd) rewriteCompile(pkg string, args []string) (exitCode int, _ e
 			return -1, errtrace.Wrap(err)
 		}
 
-		f, err := cmd.parseFile(arg, contents)
+		f, err := cmd.parseFile(arg, contents, rewriteOpts{})
 		if err != nil {
 			return -1, errtrace.Wrap(err)
 		}
