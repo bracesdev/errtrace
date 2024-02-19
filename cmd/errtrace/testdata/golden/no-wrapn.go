@@ -43,3 +43,11 @@ func multipleErrors() (x int, err1, err2 error) {
 func invalid() (x int, err error) {
 	return 42 // want:"skipping function with incorrect number of return values: got 1, want 2"
 }
+
+func nestedExpressions() (int, error) {
+	return func() (int, error) {
+		r1 := true
+		r2 := false
+		return bar.Two()
+	}()
+}
