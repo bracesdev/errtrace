@@ -16,10 +16,6 @@ func Unwrapped(s string) (int, error) {
 	return i + 42, nil
 }
 
-func Parse(s string) (int, error) {
-	return strconv.Atoi(s)
-}
-
 func DeferWithoutNamedReturns(s string) error {
 	f, err := os.Open(s)
 	if err != nil {

@@ -1,32 +1,35 @@
 //go:build ignore
 
-// @runIf options=<empty>
+// @runIf options=no-wrapn
 package foo
 
 import "example.com/bar"; import "braces.dev/errtrace"
 
 func hasTwo() (int, error) {
-	return errtrace.Wrap2(bar.Two())
+	// Same names as used by rewriting, with different types to verify scoping.
+	r1 := true
+	r2 := false
+	{ r1, r2 := bar.Two(); return r1, errtrace.Wrap(r2) }
 }
 
 func hasThree() (string, int, error) {
-	return errtrace.Wrap3(bar.Three())
+	{ r1, r2, r3 := bar.Three(); return r1, r2, errtrace.Wrap(r3) }
 }
 
 func hasFour() (string, int, bool, error) {
-	return errtrace.Wrap4(bar.Four())
+	{ r1, r2, r3, r4 := bar.Four(); return r1, r2, r3, errtrace.Wrap(r4) }
 }
 
 func hasFive() (a int, b bool, c string, d int, e error) {
-	return errtrace.Wrap5(bar.Five())
+	{ r1, r2, r3, r4, r5 := bar.Five(); return r1, r2, r3, r4, errtrace.Wrap(r5) }
 }
 
 func hasSix() (a int, b bool, c string, d int, e bool, f error) {
-	return errtrace.Wrap6(bar.Six())
+	{ r1, r2, r3, r4, r5, r6 := bar.Six(); return r1, r2, r3, r4, r5, errtrace.Wrap(r6) }
 }
 
 func hasSeven() (a int, b bool, c string, d int, e bool, f string, g error) {
-	return bar.Seven() // want:"skipping function with too many return values"
+	{ r1, r2, r3, r4, r5, r6, r7 := bar.Seven(); return r1, r2, r3, r4, r5, r6, errtrace.Wrap(r7) }
 }
 
 func nonFinalError() (error, bool) {
@@ -39,4 +42,12 @@ func multipleErrors() (x int, err1, err2 error) {
 
 func invalid() (x int, err error) {
 	return 42 // want:"skipping function with incorrect number of return values: got 1, want 2"
+}
+
+func nestedExpressions() (int, error) {
+	{ r1, r2 := func() (int, error) {
+		r1 := true
+		r2 := false
+		{ r1, r2 := bar.Two(); return r1, errtrace.Wrap(r2) }
+	}(); return r1, errtrace.Wrap(r2) }
 }

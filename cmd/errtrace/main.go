@@ -67,6 +67,7 @@ type mainParams struct {
 	Write    bool     // -w
 	List     bool     // -l
 	Format   format   // -format
+	NoWrapN  bool     // -no-wrapn
 	Patterns []string // list of files to process
 
 	ImplicitStdin bool // whether stdin was picked because there were no args
@@ -99,6 +100,9 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 		"write result to the given source files instead of stdout.")
 	flag.BoolVar(&p.List, "l", false,
 		"list files that would be modified without making any changes.")
+	flag.BoolVar(&p.NoWrapN, "no-wrapn", false,
+		"wrap multiple return values without using errtrace.WrapN",
+	)
 
 	if err := flag.Parse(args); err != nil {
 		return errtrace.Wrap(err)
@@ -228,6 +232,9 @@ func (cmd *mainCmd) Run(args []string) (exitCode int) {
 			Filename:      display,
 			Filepath:      file,
 			ImplicitStdin: p.ImplicitStdin,
+			RewriteOpts: rewriteOpts{
+				NoWrapN: p.NoWrapN,
+			},
 		}
 		if err := cmd.processFile(req); err != nil {
 			cmd.log.Printf("%s:%+v", display, err)
@@ -332,14 +339,19 @@ func goListFiles(patterns []string) (files []string, err error) {
 }
 
 type fileRequest struct {
-	Format bool
-	Write  bool
-	List   bool
+	Format      bool
+	Write       bool
+	List        bool
+	RewriteOpts rewriteOpts
 
 	Filename string // name displayed to the user
 	Filepath string // actual location on disk, or "-" for stdin
 
 	ImplicitStdin bool
+}
+
+type rewriteOpts struct {
+	NoWrapN bool
 }
 
 // processFile processes a single file.
@@ -356,7 +368,7 @@ func (cmd *mainCmd) processFile(r fileRequest) error {
 		return errtrace.Wrap(err)
 	}
 
-	parsed, err := cmd.parseFile(r.Filename, src)
+	parsed, err := cmd.parseFile(r.Filename, src, r.RewriteOpts)
 	if err != nil {
 		return errtrace.Wrap(err)
 	}
@@ -403,7 +415,7 @@ type parsedFile struct {
 	unusedOptouts   []int // list of line numbers
 }
 
-func (cmd *mainCmd) parseFile(filename string, src []byte) (parsedFile, error) {
+func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (parsedFile, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
 	if err != nil {
@@ -463,6 +475,7 @@ func (cmd *mainCmd) parseFile(filename string, src []byte) (parsedFile, error) {
 		errtracePkg: errtracePkg,
 		logger:      cmd.log,
 		inserts:     &inserts,
+		opts:        opts,
 	}
 	ast.Walk(&w, f)
 
@@ -578,6 +591,24 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 		case *insertWrapClose:
 			_, _ = out.WriteString(")")
 
+		case *insertReturnNBlockStart:
+			vars := nVars("r", it.N)
+			fmt.Fprintf(out, "{ %s := ", strings.Join(vars, ", "))
+
+			// Update last offset, so we skip writing the "return", as it's
+			// followed by the expression we want to assign to.
+			// The "return" is added in insertReturnNBlockClose.
+			lastOffset = filePos.Offset(it.SkipReturn)
+
+		case *insertReturnNBlockClose:
+			vars := nVars("r", it.N) // must match insertReturnNBlockStart
+
+			// Last return is an error, wrap it.
+			last := &vars[len(vars)-1]
+			*last = fmt.Sprintf("%s.Wrap(%v)", f.errtracePkg, *last)
+
+			fmt.Fprintf(out, "; return %s }", strings.Join(vars, ", "))
+
 		case *insertWrapAssign:
 			// Turns this:
 			//	return
@@ -639,6 +670,7 @@ type walker struct {
 	fset        *token.FileSet // file set for positional information
 	errtracePkg string         // name of the errtrace package
 	logger      *log.Logger
+	opts        rewriteOpts
 
 	optouts map[int]int // map from line to number of uses
 
@@ -826,17 +858,7 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 			return t
 		}
 
-		switch {
-		case t.numReturns > 6:
-			t.logf(n.Pos(), "skipping function with too many return values")
-		case len(t.errorIndices) != 1:
-			t.logf(n.Pos(), "skipping function with multiple error returns")
-		case t.errorIndices[0] != t.numReturns-1:
-			t.logf(n.Pos(), "skipping function with non-final error return")
-		default:
-			t.wrapExpr(t.numReturns, n.Results[0])
-		}
-
+		t.wrapReturnCall(t.numReturns, n)
 		return t
 	}
 
@@ -905,6 +927,37 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 
 		return true
 	})
+}
+
+func (t *walker) wrapReturnCall(n int, ret *ast.ReturnStmt) {
+	// Common validation
+	switch {
+	case len(t.errorIndices) != 1:
+		t.logf(ret.Pos(), "skipping function with multiple error returns")
+		return
+	case t.errorIndices[0] != t.numReturns-1:
+		t.logf(ret.Pos(), "skipping function with non-final error return")
+		return
+	case t.isErrtraceWrap(ret.Results[0]):
+		return
+	case t.optout(ret.Pos()):
+		return
+	}
+
+	if t.opts.NoWrapN {
+		*t.inserts = append(*t.inserts,
+			&insertReturnNBlockStart{N: n, Before: ret.Pos(), SkipReturn: ret.Results[0].Pos()},
+			&insertReturnNBlockClose{N: n, After: ret.End()},
+		)
+		return
+	}
+
+	if n > 6 {
+		t.logf(ret.Pos(), "skipping function with too many return values")
+		return
+	}
+
+	t.wrapExpr(n, ret.Results[0])
 }
 
 func (t *walker) wrapExpr(n int, expr ast.Expr) {
@@ -1022,6 +1075,33 @@ func (e *insertWrapClose) String() string {
 	return "</errtrace.Wrap>"
 }
 
+type insertReturnNBlockStart struct {
+	N          int       // number of returns
+	Before     token.Pos // position to insert before
+	SkipReturn token.Pos // skipped content, used to drop "return"
+}
+
+func (i *insertReturnNBlockStart) Pos() token.Pos {
+	return i.Before
+}
+
+func (i *insertReturnNBlockStart) String() string {
+	return "<return-block-errtrace.Wrap>"
+}
+
+type insertReturnNBlockClose struct {
+	N     int       // number of returns
+	After token.Pos // position to insert after
+}
+
+func (i *insertReturnNBlockClose) Pos() token.Pos {
+	return i.After
+}
+
+func (i *insertReturnNBlockClose) String() string {
+	return "</return-block-enrrtrace-Wrap>"
+}
+
 // insertWrapAssign wraps a variable in-place with an errtrace.Wrap call.
 // This is used for naked returns in functions with named return values
 //
@@ -1096,4 +1176,12 @@ func optoutLines(
 		}
 	}
 	return lines
+}
+
+func nVars(prefix string, n int) []string {
+	vars := make([]string, n)
+	for i := 0; i < n; i++ {
+		vars[i] = fmt.Sprintf("r%d", i+1)
+	}
+	return vars
 }

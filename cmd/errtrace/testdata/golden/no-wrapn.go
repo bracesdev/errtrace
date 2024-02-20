@@ -1,11 +1,14 @@
 //go:build ignore
 
-// @runIf options=<empty>
+// @runIf options=no-wrapn
 package foo
 
 import "example.com/bar"
 
 func hasTwo() (int, error) {
+	// Same names as used by rewriting, with different types to verify scoping.
+	r1 := true
+	r2 := false
 	return bar.Two()
 }
 
@@ -26,7 +29,7 @@ func hasSix() (a int, b bool, c string, d int, e bool, f error) {
 }
 
 func hasSeven() (a int, b bool, c string, d int, e bool, f string, g error) {
-	return bar.Seven() // want:"skipping function with too many return values"
+	return bar.Seven()
 }
 
 func nonFinalError() (error, bool) {
@@ -39,4 +42,12 @@ func multipleErrors() (x int, err1, err2 error) {
 
 func invalid() (x int, err error) {
 	return 42 // want:"skipping function with incorrect number of return values: got 1, want 2"
+}
+
+func nestedExpressions() (int, error) {
+	return func() (int, error) {
+		r1 := true
+		r2 := false
+		return bar.Two()
+	}()
 }

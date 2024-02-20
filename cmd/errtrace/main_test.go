@@ -54,18 +54,13 @@ func TestGolden(t *testing.T) {
 	for _, file := range files {
 		name := strings.TrimSuffix(filepath.Base(file), ".go")
 		t.Run(name, func(t *testing.T) {
-			testGolden(t, file)
+			testGoldenFile(t, file)
 		})
 	}
 }
 
-func testGolden(t *testing.T, file string) {
+func testGoldenFile(t *testing.T, file string) {
 	giveSrc, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	wantLogs, err := extractLogs(giveSrc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +68,37 @@ func testGolden(t *testing.T, file string) {
 	wantSrc, err := os.ReadFile(file + ".golden")
 	if err != nil {
 		t.Fatal("Bad test: missing .golden file:", err)
+	}
+
+	type runTests struct {
+		noOptions  bool
+		optNoWrapN bool
+	}
+	run := runTests{true, true} // by default, run all tests.
+	if strings.Contains(string(giveSrc), "@runIf options=<empty>") {
+		run = runTests{noOptions: true}
+	}
+	if strings.Contains(string(giveSrc), "@runIf options=no-wrapn") {
+		run = runTests{optNoWrapN: true}
+	}
+
+	if run.noOptions {
+		t.Run("no options", func(t *testing.T) {
+			testGoldenContents(t, nil /* additionalFlags */, file, giveSrc, wantSrc)
+		})
+	}
+
+	if run.optNoWrapN {
+		t.Run("option no-wrapn", func(t *testing.T) {
+			testGoldenContents(t, []string{"-no-wrapn"}, file, giveSrc, wantSrc)
+		})
+	}
+}
+
+func testGoldenContents(t *testing.T, additionalFlags []string, file string, giveSrc, wantSrc []byte) {
+	wantLogs, err := extractLogs(giveSrc)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Copy into a temporary directory so that we can run with -w.
@@ -89,7 +115,7 @@ func testGolden(t *testing.T, file string) {
 		exitCode := (&mainCmd{
 			Stdout: &out,
 			Stderr: testWriter{t},
-		}).Run([]string{"-l", srcPath})
+		}).Run(append(additionalFlags, "-l", srcPath))
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
 		}
@@ -116,7 +142,7 @@ func testGolden(t *testing.T, file string) {
 	exitCode := (&mainCmd{
 		Stdout: &stdout, // We don't care about stdout.
 		Stderr: &stderr,
-	}).Run([]string{"-format=never", "-w", srcPath})
+	}).Run(append(additionalFlags, "-format=never", "-w", srcPath))
 
 	if want := 0; exitCode != want {
 		t.Errorf("exit code = %d, want %d", exitCode, want)
@@ -182,7 +208,7 @@ func testGolden(t *testing.T, file string) {
 		exitCode := (&mainCmd{
 			Stderr: &stderr,
 			Stdout: testWriter{t},
-		}).Run([]string{"-format=never", "-w", "."})
+		}).Run(append(additionalFlags, "-format=never", "-w", "."))
 		if want := 0; exitCode != want {
 			t.Errorf("exit code = %d, want %d", exitCode, want)
 		}
