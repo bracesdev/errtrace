@@ -1,0 +1,20 @@
+package main
+
+import "fmt"; import "braces.dev/errtrace"
+
+func multipleValueErrAssignment() (err error) {
+	defer func() {
+		_, err = errtrace.Wrap2(fmt.Println("Hello, World!"))
+
+		// Handles too few lhs variables
+		err = errtrace.Wrap2(fmt.Println("Hello, World!"))
+
+		// Handles too many lhs variables
+		_, err, _ = errtrace.Wrap2(fmt.Println("Hello, World!"))
+
+		// Handles misplaced err
+		err, _ = errtrace.Wrap2(fmt.Println("Hello, World!"))
+	}()
+
+	return nil
+}

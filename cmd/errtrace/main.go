@@ -37,8 +37,10 @@ import (
 	"fmt"
 	"go/ast"
 	gofmt "go/format"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io"
 	"log"
 	"os"
@@ -417,7 +419,7 @@ type parsedFile struct {
 
 func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (parsedFile, error) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+	f, err := parser.ParseFile(fset, filename, src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return parsedFile{}, errtrace.Wrap(err)
 	}
@@ -441,6 +443,16 @@ func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (pa
 			break
 		}
 	}
+
+	config := types.Config{
+		Importer: importer.Default(),
+		Error: func(err error) {
+			// Ignore type checking errors.
+		},
+	}
+
+	// Ignore any error while parsing, attempt to gracefully handle it anyways.
+	pkg, _ := config.Check(filename, fset, []*ast.File{f}, nil)
 
 	if needErrtraceImport {
 		// If the file doesn't import errtrace already,
@@ -475,6 +487,7 @@ func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (pa
 		errtracePkg: errtracePkg,
 		logger:      cmd.log,
 		inserts:     &inserts,
+		pkg:         pkg,
 		opts:        opts,
 	}
 	ast.Walk(&w, f)
@@ -670,6 +683,7 @@ type walker struct {
 	fset        *token.FileSet // file set for positional information
 	errtracePkg string         // name of the errtrace package
 	logger      *log.Logger
+	pkg         *types.Package
 	opts        rewriteOpts
 
 	optouts map[int]int // map from line to number of uses
@@ -683,15 +697,15 @@ type walker struct {
 
 	// Function information:
 
-	numReturns   int                      // number of return values
-	errorIdents  []*ast.Ident             // identifiers for error return values (only if unnamed returns)
-	errorObjs    map[*ast.Object]struct{} // objects for error return values (only if named returns)
-	errorIndices []int                    // indices of error return values
+	numReturns   int                 // number of return values
+	errorIdents  []*ast.Ident        // identifiers for error return values (only if unnamed returns)
+	errorNames   map[string]struct{} // objects for error return values (only if named returns)
+	errorIndices []int               // indices of error return values
 
 	// Block information:
 
 	// Errors that are wrapped in this block.
-	alreadyWrapped map[*ast.Object]struct{}
+	alreadyWrapped map[string]struct{}
 	// The logic to detect re-wraps is pretty simplistic
 	// since it doesn't do any control flow analysis.
 	// If this becomes a necessity, we can add it later.
@@ -711,7 +725,7 @@ func (t *walker) Visit(n ast.Node) ast.Visitor {
 
 	case *ast.BlockStmt:
 		newT := *t
-		newT.alreadyWrapped = make(map[*ast.Object]struct{})
+		newT.alreadyWrapped = make(map[string]struct{})
 		return &newT
 
 	case *ast.AssignStmt:
@@ -736,7 +750,7 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	// Clear state in case we're recursing into a function literal
 	// inside a function that returns an error.
 	newT := *t
-	newT.errorObjs = nil
+	newT.errorNames = nil
 	newT.errorIdents = nil
 	newT.errorIndices = nil
 	newT.numReturns = 0
@@ -756,10 +770,10 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 	//   - unnamed error return
 	//   - named error return
 	var (
-		objs    []*ast.Object // objects of error return values
-		idents  []*ast.Ident  // identifiers of named error return values
-		indices []int         // indices of error return values
-		count   int           // total number of return values
+		names   []string     // names of error return values
+		idents  []*ast.Ident // identifiers of named error return values
+		indices []int        // indices of error return values
+		count   int          // total number of return values
 		// Invariants:
 		//  len(indices) <= count
 		//  len(names) == 0 || len(names) == len(indices)
@@ -772,7 +786,7 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 		if len(field.Names) > 0 {
 			for _, name := range field.Names {
 				if isError {
-					objs = append(objs, name.Obj)
+					names = append(names, name.Name)
 					idents = append(idents, name)
 					indices = append(indices, count)
 				}
@@ -803,7 +817,7 @@ func (t *walker) funcType(parent ast.Node, ft *ast.FuncType) ast.Visitor {
 		}
 	}
 
-	newT.errorObjs = setOf(objs)
+	newT.errorNames = setOf(names)
 	newT.errorIdents = idents
 	newT.errorIndices = indices
 	newT.numReturns = count
@@ -826,7 +840,7 @@ func (t *walker) returnStmt(n *ast.ReturnStmt) ast.Visitor {
 		// Ignore errors that have already been wrapped.
 		names := make([]string, 0, len(t.errorIndices))
 		for _, ident := range t.errorIdents {
-			if _, ok := t.alreadyWrapped[ident.Obj]; ok {
+			if _, ok := t.alreadyWrapped[ident.Name]; ok {
 				continue
 			}
 			names = append(names, ident.Name)
@@ -878,16 +892,78 @@ func (t *walker) assignStmt(n *ast.AssignStmt) {
 			continue // not an identifier
 		}
 
-		_, ok = t.errorObjs[ident.Obj]
+		_, ok = t.errorNames[ident.Name]
 		if !ok {
 			continue // not an error assignment
 		}
 
 		if i < len(n.Rhs) && t.isErrtraceWrap(n.Rhs[i]) {
 			// Assigning to a named error return value.
-			t.alreadyWrapped[ident.Obj] = struct{}{}
+			t.alreadyWrapped[ident.Name] = struct{}{}
 		}
 	}
+}
+
+type exprAndSize struct {
+	expr    ast.Expr
+	len     int
+	wrapped bool
+}
+
+func (e *exprAndSize) wrap(t *walker) {
+	if e.wrapped {
+		return
+	}
+
+	e.wrapped = true
+
+	t.wrapExpr(e.len, e.expr)
+}
+
+func (t *walker) lhsIndexToRHS(n *ast.AssignStmt) []exprAndSize {
+	exprs := make([]exprAndSize, 0, len(n.Lhs))
+
+	for _, expr := range n.Rhs {
+		info := &types.Info{
+			Types: make(map[ast.Expr]types.TypeAndValue),
+		}
+
+		// Ignore any type checking error it might still be able to be gracefully handled.
+		_ = types.CheckExpr(t.fset, t.pkg, expr.Pos(), expr, info)
+
+		ty, ok := info.Types[expr]
+		if !ok {
+			// Definitely can't find the type.
+			// In the case of a single rhs value, assume it destructures to the entirety of the lhs,
+			// e.g. for `a = invalid()` assume `invalid` corresponds to 1 value while `a, b = invalid()` should assume it corresponds to 2 etc.
+			// Otherwise assume it corresponds to one value.
+			if len(n.Rhs) == 1 {
+				size := len(n.Lhs)
+				for j := 0; j < size; j++ {
+					exprs = append(exprs, exprAndSize{expr, size, false})
+				}
+				return exprs
+			} else {
+				exprs = append(exprs, exprAndSize{expr, 1, false})
+			}
+
+			continue
+		}
+
+		tuple, ok := ty.Type.(*types.Tuple)
+		if !ok {
+			// If it's not a tuple, then it should be a single value.
+			exprs = append(exprs, exprAndSize{expr, 1, false})
+			continue
+		}
+
+		tupleLen := tuple.Len()
+		for j := 0; j < tupleLen; j++ {
+			exprs = append(exprs, exprAndSize{expr, tupleLen, false})
+		}
+	}
+
+	return exprs
 }
 
 func (t *walker) deferStmt(n *ast.DeferStmt) {
@@ -910,19 +986,23 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 			return true
 		}
 
-		for i, lhs := range assign.Lhs {
-			ident, ok := lhs.(*ast.Ident)
+		lhsToRHS := t.lhsIndexToRHS(assign)
+		for i, expr := range assign.Lhs {
+			ident, ok := expr.(*ast.Ident)
 			if !ok {
-				continue // not an identifier
+				continue
 			}
 
-			if _, ok := t.errorObjs[ident.Obj]; !ok {
-				continue // not an error assignment
+			if _, ok := t.errorNames[ident.Name]; !ok {
+				continue
 			}
 
-			// Assigning to a named error return value.
-			// Wrap the rhs in-place.
-			t.wrapExpr(1, assign.Rhs[i])
+			if i >= len(lhsToRHS) {
+				continue
+			}
+
+			rhs := lhsToRHS[i]
+			rhs.wrap(t)
 		}
 
 		return true
