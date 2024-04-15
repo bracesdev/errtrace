@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 ### Fixed
 - cmd/errtrace: Don't exit with a non-zero status when `-h` is used.
+- cmd/errtrace: Don't panic on imbalanced assignments inside defer blocks.
 
 ## v0.3.0 - 2023-12-22
 
