@@ -85,7 +85,7 @@ jobs:
       name: Install golangci-lint
       with:
         version: latest
-        args: --version  # make lint will run the linter
+        args: --help  # make lint will run the linter
 
     - name: Lint
       run: make lint GOLANGCI_LINT_ARGS=--out-format=github-actions
