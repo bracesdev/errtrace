@@ -39,10 +39,8 @@
 package errtrace
 
 import (
-	"bytes"
 	"fmt"
 	"io"
-	"log/slog"
 	"strings"
 )
 
@@ -104,26 +102,4 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 	}
 
 	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
-}
-
-// LogValue implements the slog `LogValuer` interface
-func (w *errTrace) LogValue() slog.Value {
-	var outb bytes.Buffer
-	err := writeTree(&outb, buildTraceTree(w))
-	if err != nil {
-		return slog.GroupValue(
-			slog.String("message", w.Error()),
-			slog.Any("formatErr", err),
-		)
-	}
-
-	return slog.StringValue(outb.String())
-}
-
-// ErrAttr is a helper to convert an error to a slog Attr
-// Usage:
-//
-//	slog.Default().Error("msg here", errtrace.ErrAttr(err))
-func ErrAttr(err error) slog.Attr {
-	return slog.Any("error", err)
 }
