@@ -31,11 +31,11 @@ func TestBuildTreeSingle(t *testing.T) {
 		t.Fatalf("trace length mismatch, want %d, got %d", want, got)
 	}
 
-	if want, got := "braces.dev/errtrace.errorCallee", trace[0].Name; want != got {
+	if want, got := "braces.dev/errtrace.errorCallee", trace[0].Func; want != got {
 		t.Errorf("innermost function should be first, want %q, got %q", want, got)
 	}
 
-	if want, got := "braces.dev/errtrace.errorCaller", trace[1].Name; want != got {
+	if want, got := "braces.dev/errtrace.errorCaller", trace[1].Func; want != got {
 		t.Errorf("outermost function should be last, want %q, got %q", want, got)
 	}
 }
@@ -56,11 +56,11 @@ func TestBuildTreeMulti(t *testing.T) {
 			t.Fatalf("trace length mismatch, want %d, got %d", want, got)
 		}
 
-		if want, got := "braces.dev/errtrace.errorCallee", child.Trace[0].Name; want != got {
+		if want, got := "braces.dev/errtrace.errorCallee", child.Trace[0].Func; want != got {
 			t.Errorf("innermost function should be first, want %q, got %q", want, got)
 		}
 
-		if want, got := "braces.dev/errtrace.errorCaller", child.Trace[1].Name; want != got {
+		if want, got := "braces.dev/errtrace.errorCaller", child.Trace[1].Func; want != got {
 			t.Errorf("outermost function should be last, want %q, got %q", want, got)
 		}
 	}
@@ -68,7 +68,7 @@ func TestBuildTreeMulti(t *testing.T) {
 
 func TestWriteTree(t *testing.T) {
 	// Helpers to make tests more readable.
-	type frames = []traceFrame
+	type frames = []Frame
 	tree := func(err error, trace frames, children ...traceTree) traceTree {
 		return traceTree{
 			Err:      err,

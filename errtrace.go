@@ -33,6 +33,18 @@
 //
 //	log.Printf("error: %+v", err)
 //
+// # Unwrapping errors
+//
+// Use the [UnwrapFrame] function to unwrap a single frame from an error.
+//
+//	for {
+//		frame, err, ok := errtrace.UnwrapFrame(err)
+//		if !ok {
+//			break // end of trace
+//		}
+//		printFrame(frame)
+//	}
+//
 // # See also
 //
 // https://github.com/bracesdev/errtrace.
