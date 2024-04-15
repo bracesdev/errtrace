@@ -91,3 +91,13 @@ jobs:
       run: make lint GOLANGCI_LINT_ARGS=--out-format=github-actions
       # Write in a GitHub Actions-friendly format
       # to annotate lines in the PR.
+
+  # ci-ok is a dummy job that runs after test and lint.
+  # It provides a job for us to attach a Required Status Check to.
+  ci-ok:
+    name: OK
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    steps:
+    - name: Success
+      run: echo "All checks passed."
