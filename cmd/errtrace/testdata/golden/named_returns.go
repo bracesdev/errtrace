@@ -82,3 +82,15 @@ func DeferToAnotherFunction() (err error) {
 	defer multierr.AppendInto(&err, multierr.Close(f))
 	return nil
 }
+
+func NamedReturnShadowed() (err error) {
+	defer func() {
+		// Should not get wrapped by errtrace.
+		err := cleanup()
+		if err != nil {
+			fmt.Println("cleanup failed:", err)
+		}
+	}()
+
+	return f()
+}

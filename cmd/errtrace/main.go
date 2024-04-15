@@ -909,7 +909,6 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 		if !ok {
 			return true
 		}
-
 		for i, lhs := range assign.Lhs {
 			ident, ok := lhs.(*ast.Ident)
 			if !ok {
@@ -920,9 +919,33 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 				continue // not an error assignment
 			}
 
-			// Assigning to a named error return value.
-			// Wrap the rhs in-place.
-			t.wrapExpr(1, assign.Rhs[i])
+			// Assignment to an error return value.
+			// This will take one of the following forms:
+			//
+			//  (1) x, y, err = f1(), f2(), f3()
+			//  (2) x, y, err = f() // returns multiple values
+			//  (3) x, err, z = f() // returns multiple values
+			//
+			// For (1), we can wrap just the function
+			// that returns the error. (f3 in this case)
+			//
+			// For (2), we can use a WrapN function
+			// to wrap the entire function call.
+			//
+			// For (3), we could use an inline function call,
+			// but that's not implemented yet.
+
+			if i < len(assign.Rhs) && len(assign.Lhs) == len(assign.Rhs) {
+				// Case (1):
+				// Wrap the function that returns the error.
+				t.wrapExpr(1, assign.Rhs[i])
+			} else if i == len(assign.Lhs)-1 && len(assign.Rhs) == 1 {
+				// Case (2):
+				// Wrap the entire function call.
+				t.wrapExpr(len(assign.Lhs), assign.Rhs[0])
+			} else {
+				t.logf(assign.Pos(), "skipping assignment: error is not the last return value")
+			}
 		}
 
 		return true
