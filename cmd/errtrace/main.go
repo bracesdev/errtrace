@@ -1181,7 +1181,7 @@ func optoutLines(
 func nVars(prefix string, n int) []string {
 	vars := make([]string, n)
 	for i := 0; i < n; i++ {
-		vars[i] = fmt.Sprintf("r%d", i+1)
+		vars[i] = fmt.Sprintf("%s%d", prefix, i+1)
 	}
 	return vars
 }
