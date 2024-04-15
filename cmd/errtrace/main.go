@@ -922,9 +922,9 @@ func (t *walker) deferStmt(n *ast.DeferStmt) {
 			// Assignment to an error return value.
 			// This will take one of the following forms:
 			//
-			//  (1) x, y, err := f1(), f2(), f3()
-			//  (2) x, y, err := f() // returns multiple values
-			//  (3) x, err, z := f() // returns multiple values
+			//  (1) x, y, err = f1(), f2(), f3()
+			//  (2) x, y, err = f() // returns multiple values
+			//  (3) x, err, z = f() // returns multiple values
 			//
 			// For (1), we can wrap just the function
 			// that returns the error. (f3 in this case)
