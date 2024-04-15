@@ -56,6 +56,7 @@ package errtrace
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 )
 
@@ -101,6 +102,18 @@ func FormatString(target error) string {
 	return s.String()
 }
 
+// LogAttr builds a slog attribute for an error.
+// It will log the error with an error trace
+// if the error has been wrapped with this package.
+// Otherwise, the error message will be logged as is.
+//
+// Usage:
+//
+//	slog.Default().Error("msg here", errtrace.LogAttr(err))
+func LogAttr(err error) slog.Attr {
+	return slog.Any("error", err)
+}
+
 type errTrace struct {
 	err error
 	pc  uintptr
@@ -121,6 +134,19 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 	}
 
 	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
+}
+
+// LogValue implements the [slog.LogValuer] interface.
+func (e *errTrace) LogValue() slog.Value {
+	var s strings.Builder
+	if err := Format(&s, e); err != nil {
+		return slog.GroupValue(
+			slog.String("message", e.Error()),
+			slog.Any("formatErr", err),
+		)
+	}
+
+	return slog.StringValue(s.String())
 }
 
 // TracePC returns the program counter for the location
