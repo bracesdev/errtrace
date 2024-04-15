@@ -26,5 +26,5 @@ func (e *errTrace) LogValue() slog.Value {
 //
 //	slog.Default().Error("msg here", errtrace.ErrAttr(err))
 func ErrAttr(err error) slog.Attr {
-	return slog.Any("error", err)
+	return slog.Any("err", err)
 }
