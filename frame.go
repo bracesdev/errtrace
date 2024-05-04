@@ -26,8 +26,8 @@ func (f Frame) String() string {
 
 // UnwrapFrame unwraps the outermost frame from the given error,
 // returning it and the inner error.
-// If the outermost error is not an errtrace-wrapped error,
-// UnwrapFrame returns (Frame{}, err, false).
+// ok is true if the frame was successfully extracted,
+// and false otherwise, or if the error is not an errtrace error.
 //
 // You can use this for structured access to trace information.
 // For example:
