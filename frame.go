@@ -8,9 +8,9 @@ import (
 // Frame is a single frame in an error trace
 // identifying a site where an error was wrapped.
 type Frame struct {
-	// Func is the fully qualified function name
+	// Function is the fully qualified function name
 	// inside which the error was wrapped.
-	Func string
+	Function string
 
 	// File is the file inside which the function is defined.
 	File string
@@ -21,7 +21,7 @@ type Frame struct {
 }
 
 func (f Frame) String() string {
-	return fmt.Sprintf("%s (%s:%d)", f.Func, f.File, f.Line)
+	return fmt.Sprintf("%s (%s:%d)", f.Function, f.File, f.Line)
 }
 
 // UnwrapFrame unwraps the outermost frame from the given error,
@@ -45,8 +45,8 @@ func UnwrapFrame(err error) (frame Frame, inner error, ok bool) { //nolint:reviv
 	}
 
 	return Frame{
-		Func: f.Function,
-		File: f.File,
-		Line: f.Line,
+		Function: f.Function,
+		File:     f.File,
+		Line:     f.Line,
 	}, e.err, true
 }

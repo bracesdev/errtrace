@@ -174,7 +174,7 @@ func (p *treeWriter) writeTrace(err error, trace []Frame, path []int) {
 
 		for _, frame := range trace {
 			p.pipes(path, "|  ")
-			p.writeString(frame.Func)
+			p.writeString(frame.Function)
 			p.writeString("\n")
 
 			p.pipes(path, "|  ")

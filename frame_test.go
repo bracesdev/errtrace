@@ -9,9 +9,9 @@ import (
 
 func TestFrameString(t *testing.T) {
 	f := Frame{
-		Func: "foo",
-		File: "bar.go",
-		Line: 42,
+		Function: "foo",
+		File:     "bar.go",
+		Line:     42,
 	}
 	if got, want := f.String(), "foo (bar.go:42)"; got != want {
 		t.Errorf("String(): got %q, want %q", got, want)
@@ -43,7 +43,7 @@ func TestUnwrapFrame(t *testing.T) {
 			t.Errorf("inner: got %v, want %v", inner, giveErr)
 		}
 
-		if got, want := frame.Func, ".TestUnwrapFrame.func2"; !strings.HasSuffix(got, want) {
+		if got, want := frame.Function, ".TestUnwrapFrame.func2"; !strings.HasSuffix(got, want) {
 			t.Errorf("frame.Func: got %q, does not contain %q", got, want)
 		}
 
