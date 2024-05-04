@@ -30,24 +30,6 @@ func (f Frame) String() string {
 // and false otherwise, or if the error is not an errtrace error.
 //
 // You can use this for structured access to trace information.
-// For example:
-//
-//	err := // ..
-//	var frames []Frame
-//	for {
-//		frame, err, ok := UnwrapFrame(err)
-//		if !ok {
-//			break
-//		}
-//		frames = append(frames, frame)
-//	}
-//
-// Note that the loop like the above will stop
-// when it encounters an error that wasn't wrapped
-// with errtrace.Wrap or its friends.
-// A fully complete version will also want to handle
-// errors that wrap other errors in a different way,
-// and multi-errors where each error has its own trace.
 func UnwrapFrame(err error) (frame Frame, inner error, ok bool) { //nolint:revive // error is intentionally middle return
 	e, ok := err.(*errTrace)
 	if !ok {
