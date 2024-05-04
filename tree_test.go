@@ -2,6 +2,7 @@ package errtrace
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -67,12 +68,27 @@ func TestBuildTreeMulti(t *testing.T) {
 }
 
 func TestWriteTree(t *testing.T) {
+	type testFrame struct {
+		Function string
+		File     string
+		Line     int
+	}
+
 	// Helpers to make tests more readable.
-	type frames = []Frame
+	type frames = []testFrame
 	tree := func(err error, trace frames, children ...traceTree) traceTree {
+		runtimeFrames := make([]runtime.Frame, len(trace))
+		for i, f := range trace {
+			runtimeFrames[i] = runtime.Frame{
+				Function: f.Function,
+				File:     f.File,
+				Line:     f.Line,
+			}
+		}
+
 		return traceTree{
 			Err:      err,
-			Trace:    trace,
+			Trace:    runtimeFrames,
 			Children: children,
 		}
 	}

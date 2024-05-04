@@ -7,17 +7,6 @@ import (
 	"testing"
 )
 
-func TestFrameString(t *testing.T) {
-	f := Frame{
-		Function: "foo",
-		File:     "bar.go",
-		Line:     42,
-	}
-	if got, want := f.String(), "foo (bar.go:42)"; got != want {
-		t.Errorf("String(): got %q, want %q", got, want)
-	}
-}
-
 func TestUnwrapFrame(t *testing.T) {
 	giveErr := errors.New("great sadness")
 
@@ -47,7 +36,7 @@ func TestUnwrapFrame(t *testing.T) {
 			t.Errorf("frame.Func: got %q, does not contain %q", got, want)
 		}
 
-		if got, want := filepath.Base(frame.File), "frame_test.go"; got != want {
+		if got, want := filepath.Base(frame.File), "unwrap_test.go"; got != want {
 			t.Errorf("frame.File: got %v, want %v", got, want)
 		}
 	})

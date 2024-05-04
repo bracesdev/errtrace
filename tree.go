@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 )
 
@@ -23,7 +24,7 @@ type traceTree struct {
 	// The trace is in the reverse order of the call stack.
 	// The first element is the deepest call in the stack,
 	// and the last element is the shallowest call in the stack.
-	Trace []Frame
+	Trace []runtime.Frame
 
 	// Children are the traces for each of the errors
 	// inside the multi-error.
@@ -107,7 +108,7 @@ func (p *treeWriter) writeTree(t traceTree, path []int) {
 	p.writeTrace(t.Err, t.Trace, path)
 }
 
-func (p *treeWriter) writeTrace(err error, trace []Frame, path []int) {
+func (p *treeWriter) writeTrace(err error, trace []runtime.Frame, path []int) {
 	// A trace for a single error takes
 	// the same form as a stack trace:
 	//

@@ -3,6 +3,7 @@ package errtrace_test
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"braces.dev/errtrace"
@@ -44,7 +45,7 @@ func f4() error {
 }
 
 func ExampleUnwrapFrame() {
-	var frames []errtrace.Frame
+	var frames []runtime.Frame
 	current := f4()
 	for current != nil {
 		frame, inner, ok := errtrace.UnwrapFrame(current)
@@ -64,13 +65,18 @@ func ExampleUnwrapFrame() {
 
 	var trace strings.Builder
 	for _, frame := range frames {
-		fmt.Fprintln(&trace, frame)
+		fmt.Fprintf(&trace, "%s\n\t%s:%d\n", frame.Function, frame.File, frame.Line)
 	}
 	fmt.Println(tracetest.MustClean(trace.String()))
 
 	// Output:
-	// braces.dev/errtrace_test.f4 (/path/to/errtrace/example_trace_test.go:4)
-	// braces.dev/errtrace_test.f1 (/path/to/errtrace/example_trace_test.go:1)
-	// braces.dev/errtrace_test.f2 (/path/to/errtrace/example_trace_test.go:2)
-	// braces.dev/errtrace_test.f3 (/path/to/errtrace/example_trace_test.go:3)
+	//
+	//braces.dev/errtrace_test.f4
+	//	/path/to/errtrace/example_trace_test.go:4
+	//braces.dev/errtrace_test.f1
+	//	/path/to/errtrace/example_trace_test.go:1
+	//braces.dev/errtrace_test.f2
+	//	/path/to/errtrace/example_trace_test.go:2
+	//braces.dev/errtrace_test.f3
+	//	/path/to/errtrace/example_trace_test.go:3
 }
