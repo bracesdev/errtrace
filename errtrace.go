@@ -37,13 +37,16 @@
 //
 // Use the [UnwrapFrame] function to unwrap a single frame from an error.
 //
-//	for {
-//		frame, err, ok := errtrace.UnwrapFrame(err)
+//	for err != nil {
+//		frame, inner, ok := errtrace.UnwrapFrame(err)
 //		if !ok {
 //			break // end of trace
 //		}
 //		printFrame(frame)
+//		err = inner
 //	}
+//
+// See the [UnwrapFrame] example test for a more complete example.
 //
 // # See also
 //
