@@ -2,6 +2,7 @@ package errtrace
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -31,11 +32,11 @@ func TestBuildTreeSingle(t *testing.T) {
 		t.Fatalf("trace length mismatch, want %d, got %d", want, got)
 	}
 
-	if want, got := "braces.dev/errtrace.errorCallee", trace[0].Name; want != got {
+	if want, got := "braces.dev/errtrace.errorCallee", trace[0].Function; want != got {
 		t.Errorf("innermost function should be first, want %q, got %q", want, got)
 	}
 
-	if want, got := "braces.dev/errtrace.errorCaller", trace[1].Name; want != got {
+	if want, got := "braces.dev/errtrace.errorCaller", trace[1].Function; want != got {
 		t.Errorf("outermost function should be last, want %q, got %q", want, got)
 	}
 }
@@ -56,23 +57,38 @@ func TestBuildTreeMulti(t *testing.T) {
 			t.Fatalf("trace length mismatch, want %d, got %d", want, got)
 		}
 
-		if want, got := "braces.dev/errtrace.errorCallee", child.Trace[0].Name; want != got {
+		if want, got := "braces.dev/errtrace.errorCallee", child.Trace[0].Function; want != got {
 			t.Errorf("innermost function should be first, want %q, got %q", want, got)
 		}
 
-		if want, got := "braces.dev/errtrace.errorCaller", child.Trace[1].Name; want != got {
+		if want, got := "braces.dev/errtrace.errorCaller", child.Trace[1].Function; want != got {
 			t.Errorf("outermost function should be last, want %q, got %q", want, got)
 		}
 	}
 }
 
 func TestWriteTree(t *testing.T) {
+	type testFrame struct {
+		Function string
+		File     string
+		Line     int
+	}
+
 	// Helpers to make tests more readable.
-	type frames = []traceFrame
+	type frames = []testFrame
 	tree := func(err error, trace frames, children ...traceTree) traceTree {
+		runtimeFrames := make([]runtime.Frame, len(trace))
+		for i, f := range trace {
+			runtimeFrames[i] = runtime.Frame{
+				Function: f.Function,
+				File:     f.File,
+				Line:     f.Line,
+			}
+		}
+
 		return traceTree{
 			Err:      err,
-			Trace:    trace,
+			Trace:    runtimeFrames,
 			Children: children,
 		}
 	}

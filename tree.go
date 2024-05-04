@@ -8,13 +8,6 @@ import (
 	"strings"
 )
 
-// traceFrame is a single frame in a stack trace.
-type traceFrame struct {
-	Name string // function name
-	File string // file name
-	Line int    // line number
-}
-
 // traceTree represents an error and its traces
 // as a tree structure.
 //
@@ -31,7 +24,7 @@ type traceTree struct {
 	// The trace is in the reverse order of the call stack.
 	// The first element is the deepest call in the stack,
 	// and the last element is the shallowest call in the stack.
-	Trace []traceFrame
+	Trace []runtime.Frame
 
 	// Children are the traces for each of the errors
 	// inside the multi-error.
@@ -49,32 +42,16 @@ func buildTraceTree(err error) traceTree {
 	current := traceTree{Err: err}
 loop:
 	for {
-		switch x := err.(type) {
-		case *errTrace:
-			frames := runtime.CallersFrames([]uintptr{x.pc})
-			for {
-				f, more := frames.Next()
-				if f == (runtime.Frame{}) {
-					break
-				}
-
-				current.Trace = append(current.Trace, traceFrame{
-					Name: f.Function,
-					File: f.File,
-					Line: f.Line,
-				})
-
-				if !more {
-					break
-				}
-			}
-
-			err = x.err
+		if frame, inner, ok := UnwrapFrame(err); ok {
+			current.Trace = append(current.Trace, frame)
+			err = inner
+			continue
+		}
 
 		// We unwrap errors manually instead of using errors.As
 		// because we don't want to accidentally skip over multi-errors
 		// or interpret them as part of a single error chain.
-
+		switch x := err.(type) {
 		case interface{ Unwrap() error }:
 			err = x.Unwrap()
 
@@ -131,7 +108,7 @@ func (p *treeWriter) writeTree(t traceTree, path []int) {
 	p.writeTrace(t.Err, t.Trace, path)
 }
 
-func (p *treeWriter) writeTrace(err error, trace []traceFrame, path []int) {
+func (p *treeWriter) writeTrace(err error, trace []runtime.Frame, path []int) {
 	// A trace for a single error takes
 	// the same form as a stack trace:
 	//
@@ -198,7 +175,7 @@ func (p *treeWriter) writeTrace(err error, trace []traceFrame, path []int) {
 
 		for _, frame := range trace {
 			p.pipes(path, "|  ")
-			p.writeString(frame.Name)
+			p.writeString(frame.Function)
 			p.writeString("\n")
 
 			p.pipes(path, "|  ")
