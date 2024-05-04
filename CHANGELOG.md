@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add UnwrapFrame function to extract a single frame from an error.
   You can use this to implement your own trace formatting logic.
+- cmd/errtrace:
+  Add `-no-wrapn` option to disable wrapping with generic `WrapN` functions.
+  This is only useful for toolexec mode due to tooling limitations.
+- cmd/errtrace:
+  Experimental support for instrumenting code with errtrace automatically
+  as part of the Go build process.
+  Try this out with `go build -toolexec=errtrace pkg/to/build`.
 
 ### Fixed
 - cmd/errtrace: Don't exit with a non-zero status when `-h` is used.
