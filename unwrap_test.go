@@ -53,3 +53,52 @@ func TestUnwrapFrame_badPC(t *testing.T) {
 		t.Errorf("inner: got %v, want %v", inner, giveErr)
 	}
 }
+
+func TestUnwrapOnce(t *testing.T) {
+	rootErr := New("root")
+	var errTrace *errTrace
+	errors.As(rootErr, &errTrace)
+	unwrapped := errTrace.err
+	wrapper := Wrap(rootErr)
+
+	type want struct {
+		wantErr     bool
+		matchErr    error
+		matchString string
+	}
+	tests := []struct {
+		name string
+		arg  error
+		want want
+	}{
+		{
+			name: "unwrap wrapped provides root",
+			arg:  wrapper,
+			want: want{
+				wantErr:     true,
+				matchErr:    rootErr,
+				matchString: "root",
+			},
+		},
+		{
+			name: "unwrap root provides unwrapped",
+			arg:  rootErr,
+			want: want{
+				wantErr:     true,
+				matchErr:    unwrapped,
+				matchString: "root",
+			},
+		},
+		{name: "unwrap nil provides nil"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := UnwrapOnce(tt.arg)
+			if (err != nil) != tt.want.wantErr {
+				t.Errorf("UnwrapOnce() error = %v, but wantErr %v", err, tt.want.wantErr)
+			} else if !errors.Is(err, tt.want.matchErr) {
+				t.Errorf("UnwrapOnce() error = %v, does not match matchErr %v", err, tt.want.matchErr)
+			}
+		})
+	}
+}

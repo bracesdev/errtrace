@@ -118,3 +118,15 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 
 	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
 }
+
+// TraceCall returns the program counter for the location in this frame.
+func (e *errTrace) TraceCall() uintptr {
+	return e.pc
+}
+
+type TraceCaller interface {
+	TraceCall() uintptr
+}
+
+// compile time TraceCaller interface check
+var _ TraceCaller = &errTrace{}
