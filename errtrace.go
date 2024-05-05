@@ -124,6 +124,11 @@ func (e *errTrace) TraceCall() uintptr {
 	return e.pc
 }
 
+// TraceCaller is a provider of the Program Counter
+// that the error originated with.
+// The returned PC is intended to be used with
+// runtime.CallersFrames or runtime.FuncForPC
+// to aid in generating the error return trace
 type TraceCaller interface {
 	TraceCall() uintptr
 }

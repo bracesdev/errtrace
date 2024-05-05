@@ -54,12 +54,27 @@ func TestUnwrapFrame_badPC(t *testing.T) {
 	}
 }
 
+// caused follows the pkg/errors Cause interface
+type caused struct {
+	err error
+}
+
+func (e *caused) Error() string {
+	return e.err.Error()
+}
+
+func (e *caused) Cause() error {
+	return e.err
+}
+
 func TestUnwrapOnce(t *testing.T) {
 	rootErr := New("root")
 	var errTrace *errTrace
 	errors.As(rootErr, &errTrace)
 	unwrapped := errTrace.err
 	wrapper := Wrap(rootErr)
+
+	causedErr := &caused{rootErr}
 
 	type want struct {
 		wantErr     bool
@@ -90,6 +105,15 @@ func TestUnwrapOnce(t *testing.T) {
 			},
 		},
 		{name: "unwrap nil provides nil"},
+		{
+			name: "unwrap caused provides root",
+			arg:  causedErr,
+			want: want{
+				wantErr:     true,
+				matchErr:    rootErr,
+				matchString: "root",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
