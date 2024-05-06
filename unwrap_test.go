@@ -117,11 +117,11 @@ func TestUnwrapOnce(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := UnwrapOnce(tt.arg)
+			err := unwrapOnce(tt.arg)
 			if (err != nil) != tt.want.wantErr {
-				t.Errorf("UnwrapOnce() error = %v, but wantErr %v", err, tt.want.wantErr)
+				t.Errorf("unwrapOnce() error = %v, but wantErr %v", err, tt.want.wantErr)
 			} else if !errors.Is(err, tt.want.matchErr) {
-				t.Errorf("UnwrapOnce() error = %v, does not match matchErr %v", err, tt.want.matchErr)
+				t.Errorf("unwrapOnce() error = %v, does not match matchErr %v", err, tt.want.matchErr)
 			}
 		})
 	}
