@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add UnwrapFrame function to extract a single frame from an error.
   You can use this to implement your own trace formatting logic.
+- Support extracting trace frames from custom errors.
+  Any error value that implements `TracePC() uintptr` will now
+  contribute to the trace.
 - cmd/errtrace:
   Add `-no-wrapn` option to disable wrapping with generic `WrapN` functions.
   This is only useful for toolexec mode due to tooling limitations.
