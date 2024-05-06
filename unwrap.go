@@ -20,14 +20,14 @@ func UnwrapFrame(err error) (frame runtime.Frame, inner error, ok bool) { //noli
 		return runtime.Frame{}, err, false
 	}
 
-	wrapErr := errors.Unwrap(err)
+	inner = errors.Unwrap(err)
 	frames := runtime.CallersFrames([]uintptr{e.TracePC()})
 	f, _ := frames.Next()
 	if f == (runtime.Frame{}) {
 		// Unlikely, but if PC didn't yield a frame,
 		// just return the inner error.
-		return runtime.Frame{}, wrapErr, false
+		return runtime.Frame{}, inner, false
 	}
 
-	return f, wrapErr, true
+	return f, inner, true
 }
