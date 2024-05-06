@@ -123,19 +123,15 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
 }
 
-// TracePC returns the program counter for the location in this frame.
+// TracePC returns the program counter for the location
+// in the frame that the error originated with.
+//
+// The returned PC is intended to be used with
+// runtime.CallersFrames or runtime.FuncForPC
+// to aid in generating the error return trace
 func (e *errTrace) TracePC() uintptr {
 	return e.pc
 }
 
-// tracePCprovider is a provider of the Program Counter
-// that the error originated with.
-// The returned PC is intended to be used with
-// runtime.CallersFrames or runtime.FuncForPC
-// to aid in generating the error return trace
-type tracePCprovider interface {
-	TracePC() uintptr
-}
-
 // compile time tracePCprovider interface check
-var _ tracePCprovider = &errTrace{}
+var _ interface{ TracePC() uintptr } = &errTrace{}

@@ -28,14 +28,8 @@ func UnwrapFrame(err error) (frame runtime.Frame, inner error, ok bool) { //noli
 
 // unwrapOnce accesses the direct cause of the error if any, otherwise
 // returns nil.
-//
-// It supports both errors implementing causer (`Cause()` method, from
-// github.com/pkg/errors) and `Wrapper` (`Unwrap()` method, from the
-// Go 2 error proposal).
 func unwrapOnce(err error) error {
 	switch e := err.(type) {
-	case interface{ Cause() error }:
-		return e.Cause()
 	case interface{ Unwrap() error }:
 		return e.Unwrap()
 	}
