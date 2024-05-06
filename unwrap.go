@@ -1,6 +1,9 @@
 package errtrace
 
-import "runtime"
+import (
+	"errors"
+	"runtime"
+)
 
 // UnwrapFrame unwraps the outermost frame from the given error,
 // returning it and the inner error.
@@ -14,7 +17,7 @@ func UnwrapFrame(err error) (frame runtime.Frame, inner error, ok bool) { //noli
 		return runtime.Frame{}, err, false
 	}
 
-	wrapErr := unwrapOnce(err)
+	wrapErr := errors.Unwrap(err)
 	frames := runtime.CallersFrames([]uintptr{e.TracePC()})
 	f, _ := frames.Next()
 	if f == (runtime.Frame{}) {
@@ -24,15 +27,4 @@ func UnwrapFrame(err error) (frame runtime.Frame, inner error, ok bool) { //noli
 	}
 
 	return f, wrapErr, true
-}
-
-// unwrapOnce accesses the direct cause of the error if any, otherwise
-// returns nil.
-func unwrapOnce(err error) error {
-	switch e := err.(type) {
-	case interface{ Unwrap() error }:
-		return e.Unwrap()
-	}
-
-	return nil
 }
