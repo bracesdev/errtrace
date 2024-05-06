@@ -69,7 +69,7 @@ func wrap(err error, callerPC uintptr) error {
 }
 
 // Format writes the return trace for given error to the writer.
-// The output takes a fromat similar to the following:
+// The output takes a format similar to the following:
 //
 //	<error message>
 //
@@ -79,6 +79,8 @@ func wrap(err error, callerPC uintptr) error {
 //		<file>:<line>
 //	[...]
 //
+// Any error that has a method `TracePC() uintptr` will
+// contribute to the trace.
 // If the error doesn't have a return trace attached to it,
 // only the error message is reported.
 // If the error is comprised of multiple errors (e.g. with [errors.Join]),
@@ -90,6 +92,8 @@ func Format(w io.Writer, target error) (err error) {
 }
 
 // FormatString writes the return trace for err to a string.
+// Any error that has a method `TracePC() uintptr` will
+// contribute to the trace.
 // See [Format] for details of the output format.
 func FormatString(target error) string {
 	var s strings.Builder
@@ -118,3 +122,16 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 
 	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
 }
+
+// TracePC returns the program counter for the location
+// in the frame that the error originated with.
+//
+// The returned PC is intended to be used with
+// runtime.CallersFrames or runtime.FuncForPC
+// to aid in generating the error return trace
+func (e *errTrace) TracePC() uintptr {
+	return e.pc
+}
+
+// compile time tracePCprovider interface check
+var _ interface{ TracePC() uintptr } = &errTrace{}

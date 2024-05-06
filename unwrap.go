@@ -1,6 +1,9 @@
 package errtrace
 
-import "runtime"
+import (
+	"errors"
+	"runtime"
+)
 
 // UnwrapFrame unwraps the outermost frame from the given error,
 // returning it and the inner error.
@@ -8,19 +11,23 @@ import "runtime"
 // and false otherwise, or if the error is not an errtrace error.
 //
 // You can use this for structured access to trace information.
+//
+// Any error that has a method `TracePC() uintptr` will
+// contribute a frame to the trace.
 func UnwrapFrame(err error) (frame runtime.Frame, inner error, ok bool) { //nolint:revive // error is intentionally middle return
-	e, ok := err.(*errTrace)
+	e, ok := err.(interface{ TracePC() uintptr })
 	if !ok {
 		return runtime.Frame{}, err, false
 	}
 
-	frames := runtime.CallersFrames([]uintptr{e.pc})
+	inner = errors.Unwrap(err)
+	frames := runtime.CallersFrames([]uintptr{e.TracePC()})
 	f, _ := frames.Next()
 	if f == (runtime.Frame{}) {
 		// Unlikely, but if PC didn't yield a frame,
 		// just return the inner error.
-		return runtime.Frame{}, e.err, false
+		return runtime.Frame{}, inner, false
 	}
 
-	return f, e.err, true
+	return f, inner, true
 }
