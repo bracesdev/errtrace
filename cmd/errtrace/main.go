@@ -26,9 +26,6 @@
 //	-l    list files that would be modified without making any changes.
 package main
 
-// TODO
-//   - -toolexec: run as a tool executor, fit for use with 'go build -toolexec'
-
 import (
 	"bytes"
 	"encoding/json"
@@ -51,6 +48,8 @@ import (
 
 	"braces.dev/errtrace"
 )
+
+const errtracePkgImport = "braces.dev/errtrace"
 
 func main() {
 	cmd := &mainCmd{
@@ -413,6 +412,17 @@ type parsedFile struct {
 	importsErrtrace bool // includes blank imports
 	inserts         []insert
 	unusedOptouts   []int // list of line numbers
+
+	// Used for toolexec unsafe mode, when rewriting packages that don't import
+	// errtrace, so we use go:linkname wrappers.
+	errtraceUnsafePrefix string
+}
+
+func (f *parsedFile) errtracePkgPrefix() string {
+	if f.errtraceUnsafePrefix == "" {
+		return fmt.Sprintf("%s.", f.errtracePkg)
+	}
+	return f.errtraceUnsafePrefix
 }
 
 func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (parsedFile, error) {
@@ -426,7 +436,7 @@ func (cmd *mainCmd) parseFile(filename string, src []byte, opts rewriteOpts) (pa
 	var importsErrtrace bool   // whether there's any errtrace import, including blank imports
 	needErrtraceImport := true // whether to add a new import.
 	for _, imp := range f.Imports {
-		if imp.Path.Value == `"braces.dev/errtrace"` {
+		if imp.Path.Value == `"`+errtracePkgImport+`"` {
 			importsErrtrace = true
 			if imp.Name != nil {
 				if imp.Name.Name == "_" {
@@ -574,15 +584,20 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 				_, _ = io.WriteString(out, "import ")
 			}
 
-			if f.errtracePkg == "errtrace" {
+			if f.errtraceUnsafePrefix != "" {
+				// unsafe mode uses go:link, which requires importing "unsafe" instead
+				// of errtrace.  Since duplicate blank imports are allowed by Go, we can
+				// always add it, without checking if it has been imported.
+				fmt.Fprint(out, `_ "unsafe"`)
+			} else if f.errtracePkg == "errtrace" {
 				// Don't use named imports if we're using the default name.
-				fmt.Fprintf(out, "%q", "braces.dev/errtrace")
+				fmt.Fprintf(out, "%q", errtracePkgImport)
 			} else {
-				fmt.Fprintf(out, "%s %q", f.errtracePkg, "braces.dev/errtrace")
+				fmt.Fprintf(out, "%s %q", f.errtracePkg, errtracePkgImport)
 			}
 
 		case *insertWrapOpen:
-			fmt.Fprintf(out, "%s.Wrap", f.errtracePkg)
+			fmt.Fprintf(out, "%sWrap", f.errtracePkgPrefix())
 			if it.N > 1 {
 				fmt.Fprintf(out, "%d", it.N)
 			}
@@ -605,7 +620,7 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 
 			// Last return is an error, wrap it.
 			last := &vars[len(vars)-1]
-			*last = fmt.Sprintf("%s.Wrap(%v)", f.errtracePkg, *last)
+			*last = fmt.Sprintf("%sWrap(%v)", f.errtracePkgPrefix(), *last)
 
 			fmt.Fprintf(out, "; return %s }", strings.Join(vars, ", "))
 
@@ -625,7 +640,7 @@ func (cmd *mainCmd) rewriteFile(f parsedFile, out *bytes.Buffer) error {
 				if i > 0 {
 					_, _ = out.WriteString(", ")
 				}
-				fmt.Fprintf(out, "%s.Wrap(%s)", f.errtracePkg, name)
+				fmt.Fprintf(out, "%sWrap(%s)", f.errtracePkgPrefix(), name)
 			}
 			_, _ = out.WriteString("; ")
 
