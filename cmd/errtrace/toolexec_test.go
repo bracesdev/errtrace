@@ -20,16 +20,20 @@ import (
 )
 
 func TestToolExec(t *testing.T) {
-	const testProg = "./testdata/toolexec-test"
+	const testProgDir = "./testdata/toolexec-test"
+	const testProgPkg = "braces.dev/errtrace/cmd/errtrace/testdata/toolexec-test/"
 
 	errTraceCmd := filepath.Join(t.TempDir(), "errtrace")
 	if runtime.GOOS == "windows" {
 		errTraceCmd += ".exe" // can't run binaries on Windows otherwise.
 	}
-	runGo(t, ".", "build", "-o", errTraceCmd, ".")
+	_, stderr, err := runGo(t, ".", "build", "-o", errTraceCmd, ".")
+	if err != nil {
+		t.Fatalf("compile errtrace failed: %v\nstderr: %s", err, stderr)
+	}
 
 	var wantTraces []string
-	err := filepath.Walk(testProg, func(path string, info fs.FileInfo, err error) error {
+	err = filepath.Walk(testProgDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return errtrace.Wrap(err)
 		}
@@ -61,6 +65,7 @@ func TestToolExec(t *testing.T) {
 		name       string
 		goArgs     func(t testing.TB) []string
 		wantTraces []string
+		wantErr    string
 	}{
 		{
 			name: "no toolexec",
@@ -79,9 +84,9 @@ func TestToolExec(t *testing.T) {
 		{
 			name: "toolexec with files",
 			goArgs: func(t testing.TB) []string {
-				files, err := goListFiles([]string{testProg})
+				files, err := goListFiles([]string{testProgDir})
 				if err != nil {
-					t.Fatalf("list go files in %v: %v", testProg, err)
+					t.Fatalf("list go files in %v: %v", testProgDir, err)
 				}
 
 				nonTest := slices.DeleteFunc(files, func(file string) bool {
@@ -94,13 +99,48 @@ func TestToolExec(t *testing.T) {
 			},
 			wantTraces: wantTraces,
 		},
+		{
+			name: "toolexec with required-packages ...",
+			goArgs: func(t testing.TB) []string {
+				return []string{"-toolexec", errTraceCmd + " -required-packages " + testProgPkg + "...", "."}
+			},
+			wantErr: "p1 missing errtrace import",
+		},
+		{
+			name: "toolexec with required-packages list",
+			goArgs: func(t testing.TB) []string {
+				requiredPackages := strings.Join([]string{
+					testProgPkg + "p2",
+					testProgPkg + "p3",
+				}, ",")
+				return []string{"-toolexec", errTraceCmd + " -required-packages " + requiredPackages, "."}
+			},
+			wantTraces: wantTraces,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			args := tt.goArgs(t)
 
-			verify := func(t testing.TB, stdout string) {
+			verifyCompile := func(t testing.TB, _, stderr string, err error) {
+				if tt.wantErr != "" {
+					if err == nil {
+						t.Fatalf("run expected error %v, but got no error", tt.wantErr)
+						return
+					}
+					if !strings.Contains(stderr, tt.wantErr) {
+						t.Fatalf("run unexpected error %q to contain %q", stderr, tt.wantErr)
+					}
+					return
+				}
+
+				if err != nil {
+					t.Fatalf("run failed: %v\n%s", err, stderr)
+				}
+			}
+
+			verifyTraces := func(t testing.TB, stdout string) {
 				gotLines := fileLines(stdout)
 				sort.Strings(gotLines)
 
@@ -112,8 +152,9 @@ func TestToolExec(t *testing.T) {
 
 			t.Run("go run", func(t *testing.T) {
 				runArgs := append([]string{"run"}, args...)
-				stdout, _ := runGo(t, testProg, runArgs...)
-				verify(t, stdout)
+				stdout, stderr, err := runGo(t, testProgDir, runArgs...)
+				verifyCompile(t, stdout, stderr, err)
+				verifyTraces(t, stdout)
 			})
 
 			t.Run("go build", func(t *testing.T) {
@@ -123,14 +164,18 @@ func TestToolExec(t *testing.T) {
 				}
 
 				runArgs := append([]string{"build", "-o", outExe}, args...)
-				runGo(t, testProg, runArgs...)
+				stdout, stderr, err := runGo(t, testProgDir, runArgs...)
+				verifyCompile(t, stdout, stderr, err)
+				if err != nil {
+					return
+				}
 
 				cmd := exec.Command(outExe)
 				output, err := cmd.Output()
 				if err != nil {
 					t.Fatalf("run built binary: %v", err)
 				}
-				verify(t, string(output))
+				verifyTraces(t, string(output))
 			})
 		})
 	}
@@ -172,16 +217,13 @@ func fileLines(out string) []string {
 	return fileLines
 }
 
-func runGo(t testing.TB, dir string, args ...string) (stdout, stderr string) {
+func runGo(t testing.TB, dir string, args ...string) (stdout, stderr string, _ error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	cmd.Stdin = nil
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("run failed: %v\n%s", err, stderrBuf.String())
-	}
-
-	return stdoutBuf.String(), stderrBuf.String()
+	err := cmd.Run()
+	return stdoutBuf.String(), stderrBuf.String(), errtrace.Wrap(err)
 }
