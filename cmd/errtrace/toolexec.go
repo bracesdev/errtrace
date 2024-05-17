@@ -18,6 +18,9 @@ import (
 	"braces.dev/errtrace"
 )
 
+// Note: Choose a prefix that is not likely to clash with user symbols.
+const errtraceUnsafePrefix = "__errtrace_"
+
 func (cmd *mainCmd) handleToolExec(args []string) (exitCode int, handled bool) {
 	// In toolexec mode, we're passed the original command + arguments.
 	if len(args) == 0 {
@@ -51,6 +54,7 @@ func (cmd *mainCmd) handleToolExec(args []string) (exitCode int, handled bool) {
 
 type toolExecParams struct {
 	RequiredPkgSelectors []string
+	UnsafePkgSelectors   []string
 
 	Tool     string
 	ToolArgs []string
@@ -64,9 +68,11 @@ func (p *toolExecParams) Parse(w io.Writer, args []string) error {
 		logln(w, `usage with go build/run/test: -toolexec="errtrace [options]"`)
 		flag.PrintDefaults()
 	}
-	var requiredPkgs string
+	var requiredPkgs, unsafePkgs string
 	p.flags.StringVar(&requiredPkgs, "required-packages", "", "comma-separated list of package selectors "+
 		"that are expected to be import errtrace if they return errors.")
+	p.flags.StringVar(&unsafePkgs, "unsafe-packages", "", "comma-separated list of package selectors "+
+		"to rewrite using unsafe go:link, regardless of whether they import errtrace.")
 
 	// Flag parsing stops at the first non-flag argument (no "-").
 	if err := p.flags.Parse(args); err != nil {
@@ -81,6 +87,7 @@ func (p *toolExecParams) Parse(w io.Writer, args []string) error {
 	p.Tool = remArgs[0]
 	p.ToolArgs = remArgs[1:]
 	p.RequiredPkgSelectors = strings.Split(requiredPkgs, ",")
+	p.UnsafePkgSelectors = strings.Split(unsafePkgs, ",")
 	return nil
 }
 
@@ -99,6 +106,27 @@ func (p *toolExecParams) versionCacheKey() string {
 
 func (p *toolExecParams) requiredPackage(pkg string) bool {
 	for _, selector := range p.RequiredPkgSelectors {
+		if packageSelectorMatch(selector, pkg) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *toolExecParams) unsafeRewriteStd() bool {
+	// stdlib requires an explicit opt-in.
+	// Since there's known issues with error checks in the stdlib
+	// which can break with error wrapping, we call it std-unsafe.
+	return slices.Contains(p.UnsafePkgSelectors, "std-unsafe")
+}
+
+func (p *toolExecParams) unsafeRewrite(pkg string) bool {
+	if pkg == errtracePkgImport {
+		// Never rewrite the errtrace package, which leads to circular deps.
+		return false
+	}
+
+	for _, selector := range p.UnsafePkgSelectors {
 		if packageSelectorMatch(selector, pkg) {
 			return true
 		}
@@ -145,8 +173,8 @@ func (cmd *mainCmd) toolExecRewrite(pkg string, p toolExecParams) (exitCode int)
 		return cmd.runOriginal(p)
 	}
 
-	// We only modify files that import errtrace, so stdlib is never eliglble.
-	if isStdLib(p.ToolArgs) {
+	// We only modify files that import errtrace, so stdlib is only eligible in unsafe mode.
+	if isStdLib(p.ToolArgs) && !p.unsafeRewriteStd() {
 		return cmd.runOriginal(p)
 	}
 
@@ -160,43 +188,25 @@ func (cmd *mainCmd) toolExecRewrite(pkg string, p toolExecParams) (exitCode int)
 }
 
 func (cmd *mainCmd) rewriteCompile(pkg string, p toolExecParams) (exitCode int, _ error) {
-	var canRewrite, needRewrite bool
-	parsed := make(map[string]parsedFile)
-	for _, arg := range p.ToolArgs {
-		if !isGoFile(arg) {
-			continue
-		}
-
-		contents, err := os.ReadFile(arg)
-		if err != nil {
-			return -1, errtrace.Wrap(err)
-		}
-
-		f, err := cmd.parseFile(arg, contents, rewriteOpts{})
-		if err != nil {
-			return -1, errtrace.Wrap(err)
-		}
-		parsed[arg] = f
-
-		// TODO: Support an "unsafe" mode to rewrite packages without errtrace imports.
-		if f.importsErrtrace {
-			canRewrite = true
-		}
-		if len(f.inserts) > 0 {
-			needRewrite = true
-		}
+	parsed, err := cmd.parsePkg(pkg, p.ToolArgs)
+	if err != nil {
+		return -1, errtrace.Wrap(err)
 	}
 
-	if !needRewrite {
+	if !parsed.needsRewrite {
 		return cmd.runOriginal(p), nil
 	}
 
-	if !canRewrite {
-		if p.requiredPackage(pkg) {
+	var unsafeForceImport bool
+	if !parsed.importsErrtrace {
+		unsafeForceImport = p.unsafeRewrite(pkg)
+		if !unsafeForceImport && p.requiredPackage(pkg) {
 			logf(cmd.Stderr, "errtrace required package %v missing errtrace import, needs rewrite", pkg)
 			return 1, nil
 		}
-		return cmd.runOriginal(p), nil
+		if !unsafeForceImport {
+			return cmd.runOriginal(p), nil
+		}
 	}
 
 	// Use a temporary directory per-package that is rewritten.
@@ -206,20 +216,34 @@ func (cmd *mainCmd) rewriteCompile(pkg string, p toolExecParams) (exitCode int, 
 	}
 	defer os.RemoveAll(tempDir) //nolint:errcheck // best-effort removal of temp files.
 
+	// If a package doesn't already import errtrace, add `go:linkname` to the
+	// package to link to errtrace symbols. Only required once per-package.
+	addLinkName := unsafeForceImport
+
 	newArgs := make([]string, 0, len(p.ToolArgs))
 	for _, arg := range p.ToolArgs {
-		f, ok := parsed[arg]
+		f, ok := parsed.files[arg]
 		if !ok || len(f.inserts) == 0 {
 			newArgs = append(newArgs, arg)
 			continue
 		}
 
-		// Add a //line directive so the original filepath is used in errors and panics.
-		var out bytes.Buffer
-		_, _ = fmt.Fprintf(&out, "//line %v:1\n", arg)
+		if unsafeForceImport {
+			f.errtraceUnsafePrefix = errtraceUnsafePrefix
+		}
 
-		if err := cmd.rewriteFile(f, &out); err != nil {
+		// Add a //line directive so the original filepath is used in errors and panics.
+		out := &bytes.Buffer{}
+		_, _ = fmt.Fprintf(out, "//line %v:1\n", arg)
+
+		if err := cmd.rewriteFile(f, out); err != nil {
 			return -1, errtrace.Wrap(err)
+		}
+
+		if addLinkName {
+			_, _ = fmt.Fprintf(out, "\n\n//go:linkname %vWrap %v.Wrap\n", errtraceUnsafePrefix, errtracePkgImport)
+			_, _ = fmt.Fprintf(out, "func %vWrap(err error) error\n", errtraceUnsafePrefix)
+			addLinkName = false
 		}
 
 		// TODO: Handle clashes with the same base name in different directories (E.g., with bazel).
@@ -233,6 +257,52 @@ func (cmd *mainCmd) rewriteCompile(pkg string, p toolExecParams) (exitCode int, 
 
 	p.ToolArgs = newArgs
 	return cmd.runOriginal(p), nil
+}
+
+type parsePkgState struct {
+	pkg             string
+	files           map[string]parsedFile
+	importsErrtrace bool
+	needsRewrite    bool
+}
+
+func (cmd *mainCmd) parsePkg(pkg string, toolArgs []string) (*parsePkgState, error) {
+	s := &parsePkgState{
+		pkg:   pkg,
+		files: make(map[string]parsedFile),
+	}
+
+	for _, arg := range toolArgs {
+		if !isGoFile(arg) {
+			continue
+		}
+
+		contents, err := os.ReadFile(arg)
+		if err != nil {
+			return nil, errtrace.Wrap(err)
+		}
+
+		f, err := cmd.parseFile(arg, contents, rewriteOpts{
+			// WrapN is not compatible with unsafe rewrites, as `go:linkname`
+			// can't be used for generic functions like WrapN.
+			// We don't need WrapN, as it's is meant for direct source file changes,
+			// while toolexec writes ephemeral temp files.
+			NoWrapN: true,
+		})
+		if err != nil {
+			return nil, errtrace.Wrap(err)
+		}
+		s.files[arg] = f
+
+		if f.importsErrtrace {
+			s.importsErrtrace = true
+		}
+		if len(f.inserts) > 0 {
+			s.needsRewrite = true
+		}
+	}
+
+	return s, nil
 }
 
 func isCompile(arg string) bool {
