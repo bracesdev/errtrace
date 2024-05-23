@@ -32,34 +32,7 @@ func TestToolExec(t *testing.T) {
 		t.Fatalf("compile errtrace failed: %v\nstderr: %s", err, stderr)
 	}
 
-	var wantTraces []string
-	err = filepath.Walk(testProgDir, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return errtrace.Wrap(err)
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		for _, line := range findTraceLines(t, path) {
-			absPath, err := filepath.Abs(path)
-			if err != nil {
-				t.Fatalf("abspath: %v", err)
-			}
-			if runtime.GOOS == "windows" {
-				// On Windows, absPath uses windows path separators, e.g., "c:\foo"
-				// but the paths reported in traces contain '/'.
-				absPath = filepath.ToSlash(absPath)
-			}
-
-			wantTraces = append(wantTraces, fmt.Sprintf("%v:%v", absPath, line))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal("Walk failed", err)
-	}
-	sort.Strings(wantTraces)
+	wantTraces := tracePaths(t, testProgDir, "@trace")
 
 	tests := []struct {
 		name       string
@@ -181,7 +154,40 @@ func TestToolExec(t *testing.T) {
 	}
 }
 
-func findTraceLines(t testing.TB, file string) []int {
+func tracePaths(t testing.TB, path string, traceMarker string) []string {
+	var wantTraces []string
+	err := filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return errtrace.Wrap(err)
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		for _, line := range findTraceLines(t, path, traceMarker) {
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				t.Fatalf("abspath: %v", err)
+			}
+			if runtime.GOOS == "windows" {
+				// On Windows, absPath uses windows path separators, e.g., "c:\foo"
+				// but the paths reported in traces contain '/'.
+				absPath = filepath.ToSlash(absPath)
+			}
+
+			wantTraces = append(wantTraces, fmt.Sprintf("%v:%v", absPath, line))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("tracePaths failed: %v", err)
+	}
+
+	sort.Strings(wantTraces)
+	return wantTraces
+}
+
+func findTraceLines(t testing.TB, file string, traceMarker string) []int {
 	f, err := os.Open(file)
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +200,7 @@ func findTraceLines(t testing.TB, file string) []int {
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Text()
-		if strings.Contains(line, "// @trace") {
+		if strings.Contains(line, "// "+traceMarker) {
 			traces = append(traces, lineNum)
 		}
 	}
