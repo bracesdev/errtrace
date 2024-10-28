@@ -10,3 +10,12 @@ TEXT ·GetCaller(SB),NOSPLIT|NOFRAME,$0-8
 	MOVD 8(R29), R20
 	MOVD R20, ret+0(FP)
 	RET
+
+
+// func GetCallerSkip1() uintptr
+TEXT ·GetCallerSkip1(SB),NOSPLIT|NOFRAME,$0-8
+	// R29 contains the frame pointer, dereference it to skip a frame.
+	MOVD (R29), R20
+	MOVD 8(R20), R20
+	MOVD R20, ret+0(FP)
+	RET

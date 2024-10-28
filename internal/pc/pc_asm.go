@@ -6,3 +6,6 @@ package pc
 
 // GetCaller returns the program counter of the caller's caller.
 func GetCaller() uintptr
+
+// GetCallerSkip1 is similar to GetCaller, but skips an additional caller.
+func GetCallerSkip1() uintptr
