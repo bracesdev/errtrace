@@ -95,12 +95,18 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: "Check CHANGELOG is updated, or PR is marked skip-changelog"
-        uses: dangoslen/changelog-enforcer@v3
+      - name: "Check CHANGELOG is updated or PR is marked skip changelog"
+        uses: brettcannon/check-for-changed-files@v1.2.1
+        # Run only if PR body doesn't contain '[skip changelog]'.
+        if: ${{ !contains(github.event.pull_request.body, '[skip changelog]') }}
         with:
-          skipLabels: "skip-changelog"
+          file-pattern: CHANGELOG.md
+          skip-label: "skip-changelog"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          failure-message: >-
+            Missing a changelog update ${file-pattern}; please update or
+            if a changelog entry is not needed, use label ${skip-label}
+            or add [skip changelog] to the PR description.
 
   # ci-ok is a dummy job that runs after test and lint.
   # It provides a job for us to attach a Required Status Check to.
