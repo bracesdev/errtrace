@@ -4,14 +4,24 @@ package pc
 
 import "runtime"
 
-// GetCaller gets the caller's caller's PC.
+// GetCaller returns the program counter of the caller's caller.
 func GetCaller() uintptr {
-	const skip = 1 + // frame for Callers
-		1 + // frame for GetCaller
-		1 // frame for our caller, which should be errtrace.Wrap
+	return getCaller(0)
+}
+
+// GetCallerSkip1 is similar to GetCaller, but skips an additional caller.
+func GetCallerSkip1() uintptr {
+	return getCaller(1)
+}
+
+func getCaller(skip int) uintptr {
+	const baseSkip = 1 + // runtime.Callers
+		1 + // getCaller
+		1 + // GetCaller or GetCallerSkip1
+		1 // errtrace.Wrap, or errtrace.GetCaller
 
 	var callers [1]uintptr
-	n := runtime.Callers(skip, callers[:]) // skip getcallerpc + caller
+	n := runtime.Callers(baseSkip+skip, callers[:]) // skip getcallerpc + caller
 	if n == 0 {
 		return 0
 	}
