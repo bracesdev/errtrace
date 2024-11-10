@@ -101,7 +101,7 @@ jobs:
         if: ${{ !contains(github.event.pull_request.body, '[skip changelog]') }}
         with:
           file-pattern: CHANGELOG.md
-          skip-label: "skip-changelog"
+          skip-label: "skip changelog"
           token: ${{ secrets.GITHUB_TOKEN }}
           failure-message: >-
             Missing a changelog update ${file-pattern}; please update or
