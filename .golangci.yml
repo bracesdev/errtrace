@@ -34,6 +34,7 @@ linters-settings:
     exclude-functions:
       # Writing a plain string to a fmt.State cannot fail.
       - io.WriteString(fmt.State)
+      - fmt.Fprintf(fmt.State)
 
 issues:
   # Print all issues reported by all linters.

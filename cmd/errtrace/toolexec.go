@@ -44,7 +44,7 @@ func (cmd *mainCmd) handleToolExec(args []string) (exitCode int, handled bool) {
 func (cmd *mainCmd) toolExecVersion(args []string) int {
 	version, err := binaryVersion()
 	if err != nil {
-		fmt.Fprintf(cmd.Stderr, "errtrace version failed: %v", err)
+		logf(cmd.Stderr, "errtrace version failed: %v", err)
 	}
 
 	tool := exec.Command(args[0], args[1:]...)
@@ -56,11 +56,15 @@ func (cmd *mainCmd) toolExecVersion(args []string) int {
 			return exitErr.ExitCode()
 		}
 
-		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", args[0], err)
+		logf(cmd.Stderr, "tool %v failed: %v", args[0], err)
 		return 1
 	}
 
-	fmt.Fprintf(cmd.Stdout, "%s-errtrace-%s\n", strings.TrimSpace(stdout.String()), version)
+	if _, err := fmt.Fprintf(cmd.Stdout, "%s-errtrace-%s\n", strings.TrimSpace(stdout.String()), version); err != nil {
+		logf(cmd.Stderr, "failed to write version to stdout: %v", err)
+		return 1
+	}
+
 	return 0
 }
 
@@ -172,7 +176,7 @@ func (cmd *mainCmd) runOriginal(args []string) (exitCode int) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return exitErr.ExitCode()
 		}
-		fmt.Fprintf(cmd.Stderr, "tool %v failed: %v", args[0], err)
+		logf(cmd.Stderr, "tool %v failed: %v", args[0], err)
 		return 1
 	}
 
