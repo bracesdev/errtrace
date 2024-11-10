@@ -2,7 +2,8 @@ package errtrace
 
 import "braces.dev/errtrace/internal/pc"
 
-// Caller represents a single caller frame, intended for ...
+// Caller represents a single caller frame, and is intended for error helpers
+// to capture caller information for wrapping. See [GetCaller] for details.
 type Caller struct {
 	callerPC uintptr
 }
@@ -10,8 +11,15 @@ type Caller struct {
 // GetCaller captures the program counter of a caller, primarily intended for
 // error helpers so caller information captures the helper's caller.
 //
-// Note: Callers of this function should be marked using `//go:noinline`
-// to avoid inlining, as GetCaller expects to skip the caller's stack frame.
+// Callers of this function should be marked '//go:noinline' to avoid inlining,
+// as GetCaller expects to skip the caller's stack frame.
+//
+//	//go:noinline
+//	func Wrapf(err error, msg string, args ...any) {
+//		caller := errtrace.GetCaller()
+//		err := ...
+//		return caller.Wrap(err)
+//	}
 //
 //go:noinline
 func GetCaller() Caller {
