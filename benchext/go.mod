@@ -1,6 +1,6 @@
 module braces.dev/errtrace/benchext
 
-go 1.20
+go 1.21
 
 replace braces.dev/errtrace => ../
 

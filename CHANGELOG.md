@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as part of the Go build process.
   Try this out with `go build -toolexec=errtrace pkg/to/build`.
 
+### Changed
+- Update `go` directive in go.mod to 1.21.
+
 ### Fixed
 - cmd/errtrace: Don't exit with a non-zero status when `-h` is used.
 - cmd/errtrace: Don't panic on imbalanced assignments inside defer blocks.

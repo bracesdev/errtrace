@@ -199,7 +199,7 @@ func testGoldenContents(t *testing.T, additionalFlags []string, file string, giv
 		gomod := filepath.Join(dir, "go.mod")
 		pkgdir := strings.TrimSuffix(filepath.Base(file), ".go")
 		importPath := path.Join("example.com/test", pkgdir)
-		if err := os.WriteFile(gomod, []byte(fmt.Sprintf("module %s\ngo 1.20\n", importPath)), 0o600); err != nil {
+		if err := os.WriteFile(gomod, []byte(fmt.Sprintf("module %s\ngo 1.21\n", importPath)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
