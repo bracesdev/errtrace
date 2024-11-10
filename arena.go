@@ -6,6 +6,7 @@ import (
 
 // arena is a lock-free allocator for a fixed-size type.
 // It is intended to be used for allocating errTrace objects in batches.
+// dummy change to test changelog enforcement
 type arena[T any] struct {
 	slabSize int
 	pool     sync.Pool
