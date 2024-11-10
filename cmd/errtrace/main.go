@@ -1210,11 +1210,11 @@ func nVars(prefix string, n int) []string {
 }
 
 func logln(w io.Writer, s string) {
-	//nolint:errcheck // logging writes are best-effort
-	fmt.Fprintln(w, s)
+	// logging writes are best-effort
+	_, _ = fmt.Fprintln(w, s)
 }
 
 func logf(w io.Writer, format string, a ...any) {
-	//nolint:errcheck // logging writes are best-effort
-	fmt.Fprintf(w, format, a...)
+	// logging writes are best-effort
+	_, _ = fmt.Fprintf(w, format, a...)
 }
