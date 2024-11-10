@@ -7,11 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 ### Added
-- Add UnwrapFrame function to extract a single frame from an error.
+- Add `UnwrapFrame` function to extract a single frame from an error.
   You can use this to implement your own trace formatting logic.
 - Support extracting trace frames from custom errors.
   Any error value that implements `TracePC() uintptr` will now
   contribute to the trace.
+- Add `GetCaller` function for error helpers to annotate wrapped errors with
+  their caller information instead of the helper. Example:
+
+  ```go
+  //go:noinline
+  func Wrapf(err error, msg string, args ...any) {
+    caller := errtrace.GetCaller()
+    err := ...
+    return caller.Wrap(err)
+  }
+  ```
+
 - cmd/errtrace:
   Add `-no-wrapn` option to disable wrapping with generic `WrapN` functions.
   This is only useful for toolexec mode due to tooling limitations.
