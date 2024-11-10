@@ -90,7 +90,7 @@ func (p *mainParams) Parse(w io.Writer, args []string) error {
 	flag := flag.NewFlagSet("errtrace", flag.ContinueOnError)
 	flag.SetOutput(w)
 	flag.Usage = func() {
-		fmt.Fprintln(w, "usage: errtrace [options] <source files | patterns>")
+		logln(w, "usage: errtrace [options] <source files | patterns>")
 		flag.PrintDefaults()
 	}
 
@@ -1207,4 +1207,14 @@ func nVars(prefix string, n int) []string {
 		vars[i] = fmt.Sprintf("%s%d", prefix, i+1)
 	}
 	return vars
+}
+
+func logln(w io.Writer, s string) {
+	// logging writes are best-effort
+	_, _ = fmt.Fprintln(w, s)
+}
+
+func logf(w io.Writer, format string, a ...any) {
+	// logging writes are best-effort
+	_, _ = fmt.Fprintf(w, format, a...)
 }
