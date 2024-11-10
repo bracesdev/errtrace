@@ -63,9 +63,13 @@ func TestGetCallerWrap_RetCaller(t *testing.T) {
 	wantFn := "callRetCaller"
 	if !safe {
 		// If the function calling pc.GetCaller is inlined, there's no stack frame
-		// so we end up using its' caller.
-		// Callers of GetCaller using `go:noinline` avoid this (hence the docs).
-		wantFn = "TestGetCallerWrap_RetCaller"
+		// so the assembly implementation can skip the correct caller.
+		// Callers of GetCaller using `go:noinline` avoid this (as recommended in the docs).
+		// Inlining is not consistent, hence we check the frame in !safe mode.
+		f, _, _ := errtrace.UnwrapFrame(err)
+		if !strings.HasSuffix(f.Function, wantFn) {
+			wantFn = "TestGetCallerWrap_RetCaller"
+		}
 	}
 	wantErr(t, err, wantFn)
 }
