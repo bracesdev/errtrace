@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -83,13 +84,9 @@ func TestToolExec(t *testing.T) {
 					t.Fatalf("list go files in %v: %v", testProg, err)
 				}
 
-				// TODO: Once go.1.20 is dropped, we can use slices.DeleteFunc
-				nonTest := files[:0]
-				for _, file := range files {
-					if !strings.HasSuffix(file, "_test.go") {
-						nonTest = append(nonTest, file)
-					}
-				}
+				nonTest := slices.DeleteFunc(files, func(file string) bool {
+					return strings.HasSuffix(file, "_test.go")
+				})
 
 				args := []string{"-toolexec", errTraceCmd}
 				args = append(args, nonTest...)
@@ -183,7 +180,7 @@ func runGo(t testing.TB, dir string, args ...string) (stdout, stderr string) {
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("run failed: %v", err)
+		t.Fatalf("run failed: %v\n%s", err, stderrBuf.String())
 	}
 
 	return stdoutBuf.String(), stderrBuf.String()
