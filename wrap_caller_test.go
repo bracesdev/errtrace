@@ -11,6 +11,10 @@ import (
 
 var safe = false
 
+// Note: Though test tables could DRY up the below tests, they're intentionally
+// kept as functions calling other simple functions to test how inlining impacts
+// use of `GetCaller`.
+
 func TestGetCallerWrap_ErrorsNew(t *testing.T) {
 	err := callErrorsNew()
 	wantErr(t, err, "callErrorsNew")
