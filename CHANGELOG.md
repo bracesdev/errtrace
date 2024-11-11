@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Experimental support for instrumenting code with errtrace automatically
   as part of the Go build process.
   Try this out with `go build -toolexec=errtrace pkg/to/build`.
+  Automatic instrumentation only rewrites packages that import errtrace.
+  The flag `-required-packages` can be used to specify which packages
+  are expected to import errtrace if they require rewrites.
+  Example: `go build -toolexec="errtrace -required-packages pkg/..." pkg/to/build`
 
 ### Changed
 - Update `go` directive in go.mod to 1.21.
