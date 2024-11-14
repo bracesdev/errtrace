@@ -309,7 +309,7 @@ func readBuildSHA() (_ string, ok bool) {
 
 // isStdLib checks if the current execution is for stdlib.
 func isStdLib(args []string) bool {
-	return slicesContains(args, "-std")
+	return slices.Contains(args, "-std")
 }
 
 func packageSelectorMatch(selector, importPath string) bool {
