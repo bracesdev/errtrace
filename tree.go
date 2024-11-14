@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -72,7 +73,7 @@ loop:
 		}
 	}
 
-	sliceReverse(current.Trace)
+	slices.Reverse(current.Trace)
 	return current
 }
 
