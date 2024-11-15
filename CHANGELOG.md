@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Update `go` directive in go.mod to 1.21.
+- End compatibility with Go 1.20 and earlier.
 
 ### Fixed
 - cmd/errtrace: Don't exit with a non-zero status when `-h` is used.
