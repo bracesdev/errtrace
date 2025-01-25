@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -81,8 +81,8 @@ func (r fileLineReplacer) Replacements() []string {
 		// Sort the lines in the file, and remove duplicates.
 		// The result will be a slice of unique line numbers.
 		// The index of each line in this slice + 1 will be its new line number.
-		sort.Ints(fileLines)
-		fileLines = uniq(fileLines)
+		slices.Sort(fileLines)
+		fileLines = slices.Compact(fileLines)
 
 		for idx, origLine := range fileLines {
 			replaceLine := idx + 1
@@ -92,21 +92,4 @@ func (r fileLineReplacer) Replacements() []string {
 		}
 	}
 	return allReplacements
-}
-
-// uniq removes contiguous duplicates from v.
-// The slice storage is re-used so the original slice
-// should not be used after calling this function.
-func uniq[T comparable](items []T) []T {
-	if len(items) == 0 {
-		return items
-	}
-
-	newItems := items[:1]
-	for _, item := range items[1:] {
-		if item != newItems[len(newItems)-1] {
-			newItems = append(newItems, item)
-		}
-	}
-	return newItems
 }
