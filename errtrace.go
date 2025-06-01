@@ -135,15 +135,7 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 
 // LogValue implements the [slog.LogValuer] interface.
 func (e *errTrace) LogValue() slog.Value {
-	var s strings.Builder
-	if err := Format(&s, e); err != nil {
-		return slog.GroupValue(
-			slog.String("message", e.Error()),
-			slog.Any("formatErr", err),
-		)
-	}
-
-	return slog.StringValue(s.String())
+	return slog.StringValue(FormatString(e))
 }
 
 // TracePC returns the program counter for the location
