@@ -102,14 +102,11 @@ func FormatString(target error) string {
 	return s.String()
 }
 
-// LogAttr builds a slog attribute for an error.
-// It will log the error with an error trace
-// if the error has been wrapped with this package.
-// Otherwise, the error message will be logged as is.
+// LogAttr builds a slog attribute for an error with the key "error".
 //
-// Usage:
-//
-//	slog.Default().Error("msg here", errtrace.LogAttr(err))
+// When serialized with a slog-based logger,
+// this will report an error return trace if the error has one,
+// otherwise the original error message will be logged as-is.
 func LogAttr(err error) slog.Attr {
 	return slog.Any("error", err)
 }

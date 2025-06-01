@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   }
   ```
 
+- Add `LogAttr` function to log any error with log/slog with the key "error".
+  If the provided error is wrapped with errtrace, it will log the full trace.
+  Otherwise, the original error message will be logged.
 - cmd/errtrace:
   Add `-no-wrapn` option to disable wrapping with generic `WrapN` functions.
   This is only useful for toolexec mode due to tooling limitations.
@@ -38,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Update `go` directive in go.mod to 1.21, and drop compatibility with Go 1.20 and earlier.
+- Errors wrapped with errtrace are now compatible with log/slog-based loggers,
+  and will report the full error trace when logged.
 
 ### Fixed
 - cmd/errtrace: Don't exit with a non-zero status when `-h` is used.
