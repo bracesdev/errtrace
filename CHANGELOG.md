@@ -24,9 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   }
   ```
 
-- Add `LogAttr` function to log any error with log/slog with the key "error".
-  If the provided error is wrapped with errtrace, it will log the full trace.
-  Otherwise, the original error message will be logged.
+- Implement `slog.LogValuer` so errors logged with log/slog log the full trace.
 - cmd/errtrace:
   Add `-no-wrapn` option to disable wrapping with generic `WrapN` functions.
   This is only useful for toolexec mode due to tooling limitations.
