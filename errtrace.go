@@ -56,6 +56,7 @@ package errtrace
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 )
 
@@ -121,6 +122,11 @@ func (e *errTrace) Format(s fmt.State, verb rune) {
 	}
 
 	fmt.Fprintf(s, fmt.FormatString(s, verb), e.err)
+}
+
+// LogValue implements the [slog.LogValuer] interface.
+func (e *errTrace) LogValue() slog.Value {
+	return slog.StringValue(FormatString(e))
 }
 
 // TracePC returns the program counter for the location
