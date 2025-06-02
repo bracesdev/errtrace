@@ -102,15 +102,6 @@ func FormatString(target error) string {
 	return s.String()
 }
 
-// LogAttr builds a slog attribute for an error with the key "error".
-//
-// When serialized with a slog-based logger,
-// this will report an error return trace if the error has one,
-// otherwise the original error message will be logged as-is.
-func LogAttr(err error) slog.Attr {
-	return slog.Any("error", err)
-}
-
 type errTrace struct {
 	err error
 	pc  uintptr

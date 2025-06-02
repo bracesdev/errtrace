@@ -82,36 +82,6 @@ func ExampleUnwrapFrame() {
 	//	/path/to/errtrace/example_trace_test.go:3
 }
 
-func ExampleLogAttr() {
-	// This example demonstrates use of the LogAttr function.
-	// The LogAttr function always uses the "error" key.
-	logger, printLogOutput := newExampleLogger()
-
-	if err := f1(); err != nil {
-		logger.Error("f1 failed", errtrace.LogAttr(err))
-	}
-
-	printLogOutput()
-
-	// Output:
-	// {"level":"ERROR","msg":"f1 failed","error":"failed\n\nbraces.dev/errtrace_test.f3\n\t/path/to/errtrace/example_trace_test.go:3\nbraces.dev/errtrace_test.f2\n\t/path/to/errtrace/example_trace_test.go:2\nbraces.dev/errtrace_test.f1\n\t/path/to/errtrace/example_trace_test.go:1\n"}
-}
-
-func ExampleLogAttr_noTrace() {
-	// LogAttr reports the original error message
-	// if the error does not have a trace attached to it.
-	logger, printLogOutput := newExampleLogger()
-
-	if err := errors.New("no trace"); err != nil {
-		logger.Error("something broke", errtrace.LogAttr(err))
-	}
-
-	printLogOutput()
-
-	// Output:
-	// {"level":"ERROR","msg":"something broke","error":"no trace"}
-}
-
 func Example_logWithSlog() {
 	// This example demonstrates how to log an errtrace-wrapped error
 	// with the slog package.
