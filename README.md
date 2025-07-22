@@ -259,7 +259,7 @@ go install braces.dev/errtrace/cmd/errtrace@latest
 errtrace offers the following modes of usage:
 
 * [Manual instrumentation](#manual-instrumentation)
-* [Automatic instrumentation](#automatic-instrumentation)
+* [Automatic instrumentation](#automatic-instrumentation) on [save](#automatic-instrumentation-on-save) or at [compile time](#automatic-compile-time-instrumentation).
 
 ### Manual instrumentation
 
@@ -344,10 +344,20 @@ errtrace -w example.com/path/to/package
 errtrace -w ./...
 ```
 
+#### Automatic instrumentation on save
+
 errtrace can be set be setup as a custom formatter in your editor,
 similar to gofmt or goimports.
 
-#### Opting-out during automatic instrumentation
+#### Automatic compile-time instrumentation
+
+![experimental](http://badges.github.io/stability-badges/dist/experimental.svg)
+
+errtrace can rewrite files as part of compilation by passing a `-toolexec` flag.
+Build your package or binary with `go build -toolexec=errtrace` and all packages
+that import `errtrace` will be automatically instrumented.
+
+### Opting-out during automatic instrumentation
 
 If you're relying on automatic instrumentation
 and want to ignore specific lines from being instrumented,
