@@ -14,5 +14,5 @@ func main() {
 }
 
 func callP1() error {
-	return p1.WrapP2() // @trace
+	return p1.WrapP2OnlyErr() // @trace
 }

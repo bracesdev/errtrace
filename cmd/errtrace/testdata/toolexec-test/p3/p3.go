@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-// ReturnErr returns an error.
-func ReturnErr() error {
-	return errors.New("test") // @trace
+// ReturnStrErr returns an error.
+func ReturnStrErr() (string, error) {
+	return "", errors.New("test") // @trace
 }

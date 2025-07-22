@@ -7,6 +7,6 @@ import (
 )
 
 // CallP3 calls p3, and wraps the error.
-func CallP3() error {
-	return errtrace.Wrap(p3.ReturnErr()) // @trace
+func CallP3() (string, error) {
+	return errtrace.Wrap2(p3.ReturnStrErr()) // @trace
 }

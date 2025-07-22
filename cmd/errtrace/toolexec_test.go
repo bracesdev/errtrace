@@ -90,6 +90,27 @@ func TestToolExec(t *testing.T) {
 			},
 			wantTraces: wantTraces,
 		},
+		{
+			name: "toolexec with unsafe-packages ...",
+			goArgs: func(t testing.TB) []string {
+				return []string{"-toolexec", errTraceCmd + " -unsafe-packages=...", "."}
+			},
+			wantTraces: append(wantTraces, tracePaths(t, testProgDir, "@unsafe-trace")...),
+		},
+		{
+			name: "toolexec with unsafe-packages test/...",
+			goArgs: func(t testing.TB) []string {
+				return []string{"-toolexec", errTraceCmd + " -unsafe-packages=braces.dev/errtrace/cmd/errtrace/testdata/toolexec-test/...", "."}
+			},
+			wantTraces: append(wantTraces, tracePaths(t, testProgDir, "@unsafe-trace")...),
+		},
+		{
+			name: "toolexec with unsafe-packages test/p1",
+			goArgs: func(t testing.TB) []string {
+				return []string{"-toolexec", errTraceCmd + " -unsafe-packages=braces.dev/errtrace/cmd/errtrace/testdata/toolexec-test/p1", "."}
+			},
+			wantTraces: append(wantTraces, tracePaths(t, testProgDir, "@unsafe-trace")...),
+		},
 	}
 
 	for _, tt := range tests {
@@ -116,6 +137,7 @@ func TestToolExec(t *testing.T) {
 			verifyTraces := func(t testing.TB, stdout string) {
 				gotLines := fileLines(stdout)
 				sort.Strings(gotLines)
+				sort.Strings(tt.wantTraces)
 
 				if d := diff.Diff(tt.wantTraces, gotLines); d != "" {
 					t.Errorf("diff in traces:\n%s", d)
@@ -152,6 +174,20 @@ func TestToolExec(t *testing.T) {
 			})
 		})
 	}
+
+	// When using -unsafe-packages, packages that don't import errtrace can be
+	// rewritten to use Wrap, but at least one package in the binary still needs
+	// to import errtrace, otherwise, the final link will fail.
+	t.Run("unsafe no errtrace import", func(t *testing.T) {
+		args := []string{"run", "-toolexec", errTraceCmd + " -unsafe-packages=...", "."}
+		_, stderr, err := runGo(t, "./testdata/toolexec-unsafe-no-import", args...)
+		if err == nil {
+			t.Fatal("run should fail")
+		}
+		if want := "relocation target braces.dev/errtrace.Wrap not defined"; !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing expected error: %v, got:\n%s", want, stderr)
+		}
+	})
 }
 
 func tracePaths(t testing.TB, path string, traceMarker string) []string {
