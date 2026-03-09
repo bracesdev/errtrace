@@ -54,7 +54,7 @@ jobs:
     # For other architectures, use qemu.
     - name: Install QEMU
       if: matrix.arch != 'amd64' && matrix.arch != '386'
-      uses: docker/setup-qemu-action@v3
+      uses: docker/setup-qemu-action@v4
 
     - name: Enable race detection
       shell: bash
